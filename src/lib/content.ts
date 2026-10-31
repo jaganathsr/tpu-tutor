@@ -48,6 +48,7 @@ export interface ExamDef {
   count: number;
   earlier?: number;         // extra questions drawn from chapters before the primary pool
   per_chapter_min?: number;
+  mix?: Partial<Record<Question['type'], number>>; // minimum count per question type
 }
 
 type MdxModule = { default: ComponentType<{ components?: Record<string, unknown> }>; frontmatter: Record<string, any> };
@@ -116,21 +117,31 @@ function shuffle<T>(xs: T[]): T[] {
   return a;
 }
 
-/** Draw a fresh question set for an exam attempt. */
+/** Draw a fresh question set for an exam attempt: per-chapter minimums first,
+ *  then per-type minimums, then fill at random. */
 export function drawExam(def: ExamDef): Question[] {
-  const pool = def.chapters.flatMap(questions);
+  const pool = shuffle(def.chapters.flatMap(questions));
   const picked: Question[] = [];
+  const take = (q: Question) => { if (!picked.includes(q) && picked.length < def.count) picked.push(q); };
   if (def.per_chapter_min) {
-    for (const ch of def.chapters) picked.push(...shuffle(questions(ch)).slice(0, def.per_chapter_min));
+    for (const ch of def.chapters) shuffle(questions(ch)).slice(0, def.per_chapter_min).forEach(take);
   }
-  for (const q of shuffle(pool)) {
-    if (picked.length >= def.count) break;
-    if (!picked.includes(q)) picked.push(q);
+  for (const [type, min] of Object.entries(def.mix ?? {}) as [Question['type'], number][]) {
+    const have = picked.filter((q) => q.type === type).length;
+    pool.filter((q) => q.type === type && !picked.includes(q)).slice(0, Math.max(0, min - have)).forEach((q) => {
+      if (picked.length < def.count) picked.push(q);
+      else {
+        // Swap out a question of an over-represented type to make room.
+        const i = picked.findIndex((x) => x.type === 'mcq');
+        if (i >= 0) picked[i] = q;
+      }
+    });
   }
+  for (const q of pool) take(q);
   if (def.earlier) {
     const first = Math.min(...def.chapters.map((id) => chapter(id)?.number ?? 99));
     const earlier = chapters.filter((c) => c.number < first).flatMap((c) => questions(c.id));
     picked.push(...shuffle(earlier).slice(0, def.earlier));
   }
-  return picked;
+  return shuffle(picked);
 }

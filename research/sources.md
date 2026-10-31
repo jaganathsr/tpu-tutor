@@ -13,7 +13,7 @@ Every source the course cites, with an ID used for inline citations in chapter c
 
 Status labels: **read** = fetched and read in full or in the cited sections. **live** = URL returned HTTP 200, content skimmed or not needed beyond the title. **blocked** = publisher blocks automated fetches (ACM returns 403); the DOI resolves and an open copy is given where one exists. **UNVERIFIED** = the claim or URL comes only from secondary reporting or search summaries.
 
-Link liveness for every URL in this file was re-checked by `scripts/check_urls.py` on 2026-10-23: 145 of 151 return HTTP 200, the 2 IEEE pages return 202, and the 4 ACM DOIs return 403 to scripts. Results are in `research/url_check.txt`.
+Link liveness for every URL in this file was re-checked by `scripts/check_urls.py` on 2026-10-24: 146 of 152 return HTTP 200, the 2 IEEE pages return 202, and the 4 ACM DOIs return 403 to scripts. Results are in `research/url_check.txt`.
 
 ---
 
