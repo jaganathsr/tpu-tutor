@@ -1,0 +1,235 @@
+---
+objectives:
+  - I can write and explain a Pallas TPU kernel — grid, BlockSpec index maps, the (8,128) rule, memory spaces, implicit double buffering, dimension_semantics and scratch accumulators — and say how it reaches the hardware through Mosaic.
+  - I can choose a Pallas tile size from arithmetic intensity and the VMEM budget.
+  - I can say when a Pallas kernel is worth writing on TPU and when XLA already does the job.
+  - I can capture a TPU profile from JAX and from tpu-inference, and read the Trace Viewer, including async -start/-done pairs.
+  - I can decode an HLO op line — shape, layout, tiling, memory space, fusion kind, called computation and replica groups.
+  - I can find a communication-overlap failure and a sharding mistake in a profile, and use the op profile and roofline tools to choose what to fix.
+  - I can run a design review — model, chip, SLO, mesh, quantization, batch, expected step time — and state the bottleneck in one sentence.
+teachback:
+  - Show me in this trace where communication failed to overlap, and what you would change.
+  - What is the Pallas equivalent of a CUDA thread block, and why is the answer that there isn't one?
+  - Read this HLO line aloud, and tell me which memory the output lives in and how many bytes it really occupies.
+  - Walk through the design review for LLaMA-3-70B on Ironwood under a 30 ms per-token limit at 32k context.
+sources:
+  - { id: PL-tpu }
+  - { id: PL-grid }
+  - { id: PL-pipe }
+  - { id: PL-mm }
+  - { id: PL-sparse }
+  - { id: PL-dist }
+  - { id: PL-core }
+  - { id: PL-gpu }
+  - { id: K-tokamax }
+  - { id: SB9, anchor: "#the-jax-profiler-a-multi-purpose-tpu-profiler", label: "The JAX profiler" }
+  - { id: SB9, anchor: "#how-to-read-an-xla-op", label: "Reading an XLA op" }
+  - { id: SB9, anchor: "#looking-at-a-realish-example-profile", label: "Example profile" }
+  - { id: SB9, anchor: "#worked-problems", label: "Problems" }
+  - { id: XP-home }
+  - { id: XP-trace }
+  - { id: XP-opprof }
+  - { id: XP-roof }
+  - { id: XP-mem }
+  - { id: XP-jax }
+  - { id: R-tpuinf-prof }
+  - { id: X-tiled }
+  - { id: X-async }
+  - { id: A-nki }
+  - { id: SB1, anchor: "#matrix-multiplication", label: "Tile intensity" }
+---
+
+Chapter 9 ended at the edge of what XLA lets you control. This chapter covers the last two tools: writing the kernel yourself in Pallas, and measuring what actually ran with XProf. It closes with a design review that uses every chapter.
+
+## Pallas on TPU
+
+Pallas is JAX's kernel language. A kernel is a Python function over **Refs**, mutable views of memory, invoked once per point of a **grid**. **BlockSpecs** say which block of each array each grid point sees <Cite id="PL-grid" />. On TPU, Pallas lowers through **Mosaic**, an MLIR-based compiler. The result is embedded in the XLA program as a custom call, scheduled alongside XLA's own fusions <Cite id="PL-tpu" />.
+
+The tiled matmul below runs, and is checked against `jnp.dot`, in `scripts/ch10_pallas_matmul.py` (interpret mode on CPU; drop `interpret=True` on TPU):
+
+```python
+def matmul_kernel(x_ref, w_ref, o_ref, acc_ref):
+    # Grid axes (i, j, k): output tile (i, j), contraction step k (innermost).
+    @pl.when(pl.program_id(2) == 0)
+    def _():
+        acc_ref[...] = jnp.zeros_like(acc_ref)
+
+    acc_ref[...] += jnp.dot(x_ref[...], w_ref[...], preferred_element_type=jnp.float32)
+
+    @pl.when(pl.program_id(2) == pl.num_programs(2) - 1)
+    def _():
+        o_ref[...] = acc_ref[...].astype(o_ref.dtype)
+
+pl.pallas_call(
+    matmul_kernel,
+    grid=(m // bm, n // bn, k // bk),
+    in_specs=[pl.BlockSpec((bm, bk), lambda i, j, kk: (i, kk)),
+              pl.BlockSpec((bk, bn), lambda i, j, kk: (kk, j))],
+    out_specs=pl.BlockSpec((bm, bn), lambda i, j, kk: (i, j)),
+    out_shape=jax.ShapeDtypeStruct((m, n), x.dtype),
+    scratch_shapes=[pltpu.VMEM((bm, bn), jnp.float32)],
+    compiler_params=pltpu.CompilerParams(
+        dimension_semantics=("parallel", "parallel", "arbitrary")),
+)(x, w)
+```
+
+What each part does on a TPU <Cite id="PL-tpu" /> <Cite id="PL-pipe" />:
+
+- **The grid runs sequentially, in lexicographic order.** There are no concurrent thread blocks. Grid points execute one after another on a TensorCore. Putting the reduction axis last means the output block stays put across consecutive steps, and Pallas skips re-copying a block whose index did not change.
+- **BlockSpecs drive the DMAs.** Arrays passed to `pallas_call` live in HBM. For each grid step, Pallas copies the blocks the index maps select into VMEM, double-buffered by default: the copy for step n+1 runs while step n computes. `pipeline_mode=pl.Buffered(n)` deepens the buffer.
+- **The (8,128) rule.** The last two dimensions of every block must be divisible by 8 and 128, or equal the array's full dimensions, because of Chapter 2's tiling.
+- **Memory spaces.**
+  - VMEM is the default for kernel refs, and `pltpu.VMEM` scratch persists across grid steps; here it holds the fp32 accumulator.
+  - SMEM holds scalars and indices.
+  - `pl.ANY` leaves an array in HBM for manual DMA.
+- **`dimension_semantics`.** Marking grid axes "parallel" lets Pallas split them across the two TensorCores of a megacore chip; the docs say this applies to v4 and v5p. "arbitrary" marks the reduction axis.
+
+<GpuAnalogy title="GPU analogy: a Triton or CUDA tile kernel">
+<p>The structure is a Triton matmul's: tile the output, loop over the contraction, accumulate in fp32. The memory movement is what Pallas automates. A CUDA kernel stages tiles into shared memory with explicit loads, or TMA on Hopper, and synchronizes. A Pallas TPU kernel declares which block it needs, and the pipeline emits the DMAs and double buffering.</p>
+</GpuAnalogy>
+
+<AnalogyBreaks>
+<p>There is no thread-block equivalent. A CUDA grid's blocks run concurrently across SMs and must not depend on each other's order. A Pallas TPU grid is a sequential loop on one core, which is why an accumulator in scratch memory can rely on the previous step having run. Parallelism inside a step comes from the MXU and VPU operating on whole tiles, not from threads. The only cross-core parallelism is megacore splitting, or explicit per-core programming with `pl.kernel` <Cite id="PL-core" />.</p>
+</AnalogyBreaks>
+
+### Tile size is arithmetic intensity
+
+Each grid step streams a $b_m \times b_k$ block of x and a $b_k \times b_n$ block of w from HBM and does $2 b_m b_k b_n$ FLOPs. Its arithmetic intensity is about $b_m b_n / (b_m + b_n)$, independent of $b_k$ <Cite id="SB1" at="#matrix-multiplication" />. VMEM bounds how big the tiles can be.
+
+| Tile $b_m \times b_k \times b_n$ | Intensity (FLOP/B) | VMEM used | Against Ironwood's ridge of 313 |
+|---|---|---|---|
+| 256 × 512 × 256 | 128 | 1.5 MiB | memory-bound |
+| 512 × 512 × 512 | 256 | 4.0 MiB | memory-bound |
+| 1024 × 512 × 1024 | 512 | 12 MiB | compute-bound |
+| 2048 × 512 × 2048 | 1024 | 40 MiB | compute-bound, most of a core's 64 MiB |
+
+Computed by `scripts/ch10_pallas_matmul.py`. VMEM counts double-buffered input and output blocks and the fp32 accumulator. The compiler's scoped-VMEM limit per kernel, set by `xla_tpu_scoped_vmem_limit_kib`, can be lower than the physical size.
+
+### Beyond the matmul
+
+- **Scalar prefetch and block sparsity.** Index maps can read small integer arrays prefetched into SMEM. A block table then decides which KV page each grid step loads, and that is how paged attention is written <Cite id="PL-sparse" />.
+- **Remote DMA.** `pltpu.make_async_remote_copy` sends a VMEM buffer to another chip's VMEM over ICI, with semaphores for completion. The distributed Pallas guide builds ring AllGather, AllReduce and bidirectional ReduceScatter from it, which is how a collective matmul is hand-written <Cite id="PL-dist" />.
+- **SparseCore and per-core kernels.** `pl.kernel` with core and subcore meshes targets individual TensorCores and SparseCore subcores <Cite id="PL-core" />.
+
+**When to write one.** Write a Pallas kernel when XLA cannot express the access pattern, as with ragged or paged attention, MoE grouped matmuls, quantized matmuls with unusual scaling and collective matmuls with custom overlap. Do not write one when the problem is a missing fusion or a bad sharding; those are fixed with constraints and flags (Chapter 9). Libraries such as Tokamax and tpu-inference's `kernels/` directory already cover the common cases <Cite id="K-tokamax" />.
+
+<GpuAnalogy title="Mosaic GPU and NKI, for comparison">
+<p>Pallas also targets NVIDIA GPUs through Mosaic GPU, its default GPU backend since JAX 0.9. The concepts carry over (Refs, BlockSpecs, pipelining), but the APIs are hardware-specific: warpgroups, TMA and shared-memory barriers instead of VMEM and DMA semaphores <Cite id="PL-gpu" />. AWS's NKI is lower-level than Pallas TPU. The programmer issues the HBM-to-SBUF DMAs explicitly and chooses which engine runs each instruction <Cite id="A-nki" />. It is closer to Pallas with manual `make_async_copy` everywhere.</p>
+</GpuAnalogy>
+
+## Capturing a profile
+
+From JAX <Cite id="XP-jax" />:
+
+```python
+with jax.profiler.trace("/tmp/tb"):
+    y = step(params, batch)
+    y.block_until_ready()
+# then: xprof --logdir /tmp/tb   (or TensorBoard's Profile tab)
+```
+
+`jax.profiler.start_server(9999)` lets you capture on demand from the XProf UI instead. XProf's overhead on TPU is under 1% <Cite id="XP-home" />.
+
+From tpu-inference <Cite id="R-tpuinf-prof" />:
+
+- `examples/tpu_profiling.py` profiles a chosen model, input length, output length and batch. The guide suggests batch 1 with a long input for prefill, and batch 256 with one-token input and output for decode.
+- `PHASED_PROFILING_DIR` captures prefill-heavy, decode-heavy and mixed batches automatically from a running server.
+- `USE_JAX_PROFILER_SERVER=True` enables on-demand capture.
+
+## Reading the Trace Viewer
+
+The Trace Viewer shows one timeline per TensorCore <Cite id="XP-trace" /> <Cite id="SB9" at="#trace-viewer" />.
+
+- The row that matters is **XLA Ops**: the operations that actually ran, named by their HLO names. Rows built from `jax.named_scope` and the Python stack are approximations.
+- All cores run the same program, so TPU:0 is usually enough.
+- Repeated blocks are layers.
+- Keys: W and S zoom, A and D pan. Clicking an op shows its HLO and source line.
+
+Two signatures to recognize:
+
+- **A synchronous collective** is a long bar labelled `all-gather`, `reduce-scatter` or `all-reduce` on the XLA Ops row with nothing beside it: the TensorCore is waiting.
+- **An overlapped collective** appears as `all-gather-start` ... `all-gather-done` (or `collective-permute-start`/`done`), with compute fusions between the pair <Cite id="X-async" />.
+
+<Interactive caption={<><b>Reading a trace.</b> Two FSDP layers on TPU:0, illustrative timings. Switch between synchronous and asynchronous collectives and compare the time the TensorCore spends computing. Click any op for what it is.</>}>
+  <TraceReader />
+</Interactive>
+
+When the first signature appears where you expected the second, the usual causes are:
+
+- The collective's result is needed immediately, so there is nothing to overlap it with.
+- The latency-hiding scheduler is off, or was constrained by memory.
+- XLA chose a synchronous form because of a sharding mismatch: often a large unexpected AllGather, the "compiler tickling" case of Chapter 9.
+
+## Reading an op
+
+An op in the trace or a dump looks like this <Cite id="SB9" at="#how-to-read-an-xla-op" />:
+
+```
+%fusion.3 = bf16[32,32,4096]{2,1,0:T(8,128)(2,1)S(1)} fusion(bf16[32,32,8192]{...} %fusion.32), kind=kCustom, calls=%all-reduce-scatter.3
+```
+
+From left to right:
+
+- The **name**.
+- The **output type and shape**.
+- The **layout**: `{2,1,0}` lists dimensions from most minor to most major.
+- The **tiling** `T(8,128)(2,1)`: (8,128) tiles with bf16 pairs packed into 32-bit words <Cite id="X-tiled" />.
+- The **memory space**: S(1) is VMEM; no S, or S(0), is HBM.
+- The **op**, its **operands**, and attributes. A `fusion` with `calls=%all-reduce-scatter.N` is a ReduceScatter. On TPU, a `fusion` contains at most one matmul plus the elementwise work around it.
+
+<Interactive caption={<><b>HLO line decoder.</b> Pick an example or paste a line from your own profile. The decoder explains each field, computes the padding implied by the tiling, and turns replica groups into a parallelism degree. The first two examples are quoted from the Scaling Book; the third is constructed; the fourth is from Chapter 9's CPU dump.</>}>
+  <HloDecoder />
+</Interactive>
+
+<Worked title="Diagnose a profile from its HLO">
+
+The Scaling Book's Chapter 9, problem 1 <Cite id="SB9" at="#worked-problems" />. A profile shows a reduce, two large fusions and an all-reduce. The first fusion multiplies `bf16[8192]` by `bf16[4096,8192]` and outputs `bf16[4096]`. The all-reduce has `replica_groups={{0,16,32,48,64,80,96,112},...}`.
+
+- Each group has 8 members: the model is **8-way model parallel**.
+- The local shapes, multiplied out, give the true problem: `bf16[8,8192] × bf16[32768,8192] → bf16[8,32768]`.
+
+</Worked>
+
+<Worked title="Checking a profile against the roofline">
+
+The Scaling Book's worked profile <Cite id="SB9" at="#looking-at-a-realish-example-profile" />: a feed-forward up-projection on 8 TPU v2 cores (4-way data × 2-way model). Locally it is $[8, 1024, 8192] \times [8192, 16384]$; globally it is $X[32, 1024, 8192] \cdot W_\text{in}[8192, 32768]$.
+
+- Predicted: $2 \cdot 32 \cdot 1024 \cdot 8192 \cdot 32768 / (8 \cdot 23 \times 10^{12})$ = **95.6 ms**. Measured: **96 ms**.
+- The ReduceScatter after the down-projection moves a 128 MB shard one hop at 120 GB/s: predicted **1.1 ms**, measured **1.13 ms**.
+
+When the measured time is close to the roofline prediction, the op is done. When it is far off, the op profile and roofline tools say which resource it is waiting on.
+
+</Worked>
+
+## The other tools
+
+- **HLO Op Profile:** time per op, grouped by category, with achieved FLOP and bandwidth utilization. Use it to find the few ops worth attention <Cite id="XP-opprof" />.
+- **Roofline Model:** plots every op, up to the top 1,000, by arithmetic intensity against achieved FLOP/s, with HBM and VMEM rooflines (and CMEM on v4). An op on the slanted part of the roofline is memory-bound; on the flat part, compute-bound. An op well below both lines is waiting on something else, usually latency or communication <Cite id="XP-roof" />.
+- **Memory Viewer:** HBM allocation over program order and the peak. Use it to debug out-of-memory errors and see what is live at the peak <Cite id="XP-mem" />.
+- **Graph Viewer:** the HLO graph around an op, with shardings.
+- **Megascale Viewer:** DCN traffic for multislice jobs.
+
+## Design review
+
+The capstone uses every chapter. Given a model, a chip, a latency target and a cost goal, produce the mesh, quantization, batch, expected step time and the bottleneck in one sentence. Try it with the calculator in Chapter 7 before reading the model answer.
+
+**Brief.** Serve LLaMA-3-70B on Ironwood. Prompts are 8k tokens; conversations grow to 32k tokens. Time to first token ≤ 500 ms; time per output token ≤ 30 ms. Maximize tokens per second per chip.
+
+<Worked title="Model answer (derived)">
+
+From `scripts/ch10_capstone.py`, using Chapter 7's step model, all lower bounds:
+
+| Decode replica | Largest batch that fits | Batch under 30 ms | Step | Tokens/s per chip |
+|---|---|---|---|---|
+| 4 chips, bf16 weights and KV | 63 | 63 | 27.7 ms | 569 |
+| 4 chips, fp8 weights and KV | 140 | 140 | 27.9 ms | 1,257 |
+| 8 chips, bf16 | 140 | 140 | 27.9 ms | 628 |
+| 8 chips, fp8 | 294 | 294 | 27.9 ms | 1,316 |
+
+- **Bottleneck:** reading KV caches from HBM. At the largest batch, KV is about 25 ms of the 28 ms step, weights 1–2 ms and FLOPs about 1 ms. Every configuration is capacity-limited before it is latency-limited.
+- **Quantization:** fp8 weights and fp8 KV, which doubles throughput per chip. fp8 math is irrelevant to decode here.
+- **Replica size:** 4 chips, one Ironwood host and 8 JAX devices, with 4-way tensor parallelism across chips and the two chiplets of each chip on the fastest axis. Throughput per chip is within 5% of an 8-chip replica, and one host is a smaller failure domain. TP collectives cost a latency floor of about 0.6 ms per step, small against 28 ms.
+- **Prefill:** separate 4-chip prefill servers, with a TTFT of about 337 ms for an 8k prompt at 40% MFU, under the 500 ms target. With 512-token answers, each decode replica completes about 10 requests per second and each prefill server about 3: roughly 3 prefill servers per decode replica (Chapter 7's disaggregation arithmetic).
+- **Headroom:** these are lower bounds. Leave 20–30% for scheduling and padding; profile the first deployment and compare each op to the roofline.
+
+</Worked>

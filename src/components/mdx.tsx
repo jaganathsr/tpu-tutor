@@ -14,6 +14,8 @@ import { CollectiveViz } from '../interactives/CollectiveViz';
 import { MeshPlanner } from '../interactives/MeshPlanner';
 import { BreakevenCalc } from '../interactives/BreakevenCalc';
 import { ServingStackDiagram } from '../interactives/ServingStackDiagram';
+import { HloDecoder } from '../interactives/HloDecoder';
+import { TraceReader } from '../interactives/TraceReader';
 
 type Src = { id: string; title: string; url: string; section: string };
 const SRC = sources as Record<string, Src>;
@@ -212,4 +214,6 @@ export const mdxComponents = {
   MeshPlanner,
   BreakevenCalc,
   ServingStackDiagram,
+  HloDecoder,
+  TraceReader,
 };

@@ -1,0 +1,148 @@
+# Chapter 10 quiz. Numbers from scripts/ch10_pallas_matmul.py and scripts/ch10_capstone.py.
+- id: ch10-grid
+  type: mcq
+  prompt: "How does a Pallas TPU grid execute?"
+  options:
+    - text: "Sequentially in lexicographic order on a TensorCore; parallel axes can be split across a megacore's two cores."
+      correct: true
+      why: "That is why an accumulator in scratch memory can rely on the previous reduction step having run."
+    - text: "Concurrently, one grid point per thread block, like CUDA."
+      why: "There are no concurrent thread blocks on a TensorCore."
+    - text: "In random order chosen by the compiler."
+      why: "The order is lexicographic and documented."
+    - text: "Once per MXU."
+      why: "MXUs are units within a core; the grid is a loop."
+  source: "PL-tpu"
+
+- id: ch10-blockspec
+  type: mcq
+  prompt: "A Pallas TPU block of shape (100, 256) fails to compile for a bf16[1024, 4096] array. Why?"
+  options:
+    - text: "The last two block dimensions must be divisible by 8 and 128 (or equal the full dimensions); 100 is not a multiple of 8."
+      correct: true
+      why: "The rule comes from (8,128) tiling of vector registers and memory."
+    - text: "Blocks must be square."
+      why: "Rectangular blocks are normal."
+    - text: "bf16 blocks must be multiples of 256."
+      why: "The rule is 8 and 128 on the last two dimensions."
+    - text: "The block exceeds VMEM."
+      why: "A (100, 256) bf16 block is 50 KB."
+  source: "PL-tpu"
+
+- id: ch10-dma
+  type: mcq
+  prompt: "Who issues the HBM-to-VMEM copies in a Pallas TPU kernel written with BlockSpecs?"
+  options:
+    - text: "The Pallas pipeline, from the BlockSpec index maps, double-buffered so the next block loads while the current one computes."
+      correct: true
+      why: "pl.Buffered(n) deepens the buffering; pl.ANY plus make_async_copy gives manual control."
+    - text: "The kernel body, with explicit load instructions."
+      why: "With BlockSpecs, the body sees refs already in VMEM."
+    - text: "A hardware cache."
+      why: "TPUs have no cache in this path."
+    - text: "XLA's fusion pass."
+      why: "Pallas kernels are custom calls; their internal DMAs come from the Pallas pipeline."
+  source: "PL-pipe"
+
+- id: ch10-tile
+  type: numeric
+  prompt: "A Pallas matmul uses 512×512 output tiles in bf16. Using intensity ≈ $b_m b_n/(b_m + b_n)$, what is its arithmetic intensity in FLOP/B?"
+  answer: 256
+  tolerance: 0.01
+  unit: FLOP/B
+  explanation: "$512 \\cdot 512 / 1024 = 256$, below Ironwood's ridge of 313: memory-bound. 1024×1024 tiles give 512 FLOP/B using about 12 MiB of VMEM."
+  source: "SB1 #matrix-multiplication"
+
+- id: ch10-when-pallas
+  type: scenario
+  prompt: "A profile shows an elementwise op running as a separate fusion between two matmuls, adding 0.4 ms. Should you write a Pallas kernel?"
+  options:
+    - text: "Not first: check why XLA did not fuse it (shapes, layouts, a sharding boundary, flags). Pallas is for access patterns XLA cannot express."
+      correct: true
+      why: "Ragged attention, grouped MoE matmuls, unusual quantized matmuls and custom collective overlap are the usual reasons for Pallas."
+    - text: "Yes, always write Pallas for elementwise ops."
+      why: "XLA fuses elementwise work well when nothing prevents it."
+    - text: "No, elementwise ops are free."
+      why: "Unfused elementwise ops cost HBM round trips; Chapter 1 showed their intensity is low."
+    - text: "Yes, because XLA cannot use the VPU."
+      why: "Fusions use the VPU."
+  source: "PL-tpu"
+
+- id: ch10-memspace
+  type: mcq
+  prompt: "In bf16[32,32,4096]{2,1,0:T(8,128)(2,1)S(1)}, what does S(1) mean?"
+  options:
+    - text: "The array is in VMEM."
+      correct: true
+      why: "S(0), or no S, is HBM; S(1) is VMEM."
+    - text: "It is sharded over one mesh axis."
+      why: "Sharding is a separate annotation."
+    - text: "Stride 1."
+      why: "Layout is the minor-to-major list and tiling."
+    - text: "It is on SparseCore 1."
+      why: "Memory-space numbers are not SparseCore indices."
+  source: "SB9 #how-to-read-an-xla-op"
+
+- id: ch10-padding
+  type: numeric
+  prompt: "An f32[3,5] array has layout {1,0:T(2,2)}. Padded to its tiles, how many elements does it occupy?"
+  answer: 24
+  tolerance: 0.001
+  unit: elements
+  explanation: "Both dimensions round up to multiples of 2: [4, 6] = 24 elements, 1.6× the logical 15. The Scaling Book uses this example."
+  source: "SB9 #how-to-read-an-xla-op"
+
+- id: ch10-replica
+  type: numeric
+  prompt: "An all-reduce has replica_groups={{0,16,32,48,64,80,96,112},...}. How many ways is the model sharded along the axis it reduces over?"
+  answer: 8
+  tolerance: 0.001
+  unit: ways
+  explanation: "Each group lists the devices that reduce together: 8 of them, so 8-way model parallelism. The stride of 16 shows which mesh axis it is."
+  adapted_from: SB9 Q1
+  source: "SB9 #worked-problems"
+
+- id: ch10-sync-collective
+  type: scenario
+  prompt: "On the XLA Ops row of TPU:0, a 180 µs bar labelled all-gather sits alone between two layers, with nothing beside it. What does it show, and what is the first thing to check?"
+  options:
+    - text: "A synchronous collective with the TensorCore idle; check whether the gather is avoidable (sharding) or whether async collectives and the latency-hiding scheduler are enabled."
+      correct: true
+      why: "Overlapped collectives appear as -start/-done pairs with compute between them."
+    - text: "An efficient overlapped collective."
+      why: "Overlap shows as start/done pairs, not one long bar."
+    - text: "An HBM bottleneck."
+      why: "The op is a collective over ICI."
+    - text: "A profiler artifact."
+      why: "The XLA Ops row shows ops that actually ran."
+  source: "X-async"
+
+- id: ch10-roofline-tool
+  type: mcq
+  prompt: "In XProf's Roofline Model tool, an op sits far below both the slanted HBM line and the flat compute line. What is the most likely explanation?"
+  options:
+    - text: "It is limited by something the roofline does not model: latency, a small or ragged shape, or waiting on communication."
+      correct: true
+      why: "On the slanted part means memory-bound; on the flat part, compute-bound. Well below both means neither resource is saturated."
+    - text: "It is compute-bound."
+      why: "Compute-bound ops sit near the flat line."
+    - text: "It is HBM-bound."
+      why: "HBM-bound ops sit near the slanted line."
+    - text: "It uses VMEM."
+      why: "VMEM has its own, higher roofline in the tool."
+  source: "XP-roof"
+
+- id: ch10-capstone
+  type: numeric
+  prompt: "LLaMA-3-70B decode on 4 Ironwood chips, fp8 weights and fp8 KV, 32k context: the largest batch that fits is 140 and the step takes about 27.9 ms. Throughput per chip, in tokens/s?"
+  answer: 1257
+  tolerance: 0.03
+  unit: tokens/s
+  explanation: "$140 / 0.0279 / 4 \\approx 1{,}255$, about 1,257 in the script, against 569 in bf16. The step is KV-bound; fp8 KV doubles capacity and halves bytes."
+  source: "D-7x"
+
+- id: ch10-explain
+  type: free
+  prompt: "Explain to a CUDA engineer what replaces a thread block in Pallas TPU, and how a Pallas matmul's tile size relates to the roofline."
+  model_answer: "Nothing replaces it directly. A Pallas TPU kernel runs a sequential grid on one TensorCore: each grid point gets VMEM blocks chosen by BlockSpec index maps, and the pipeline double-buffers the HBM-to-VMEM DMAs so the next block loads while the current one computes. Parallelism within a step comes from the MXU and VPU working on whole tiles. Across cores there is only megacore splitting of 'parallel' axes, or explicit per-core programming. Because the grid is ordered, an fp32 accumulator in scratch can carry across the contraction axis. Tile size sets arithmetic intensity: about bm·bn/(bm+bn) FLOPs per byte streamed from HBM. 256×256 tiles give 128 FLOP/B, memory-bound against Ironwood's 313. 1024×1024 give 512 FLOP/B, compute-bound, using about 12 MiB of the 64 MiB of VMEM per TensorCore. VMEM, and the compiler's scoped VMEM limit, cap how large the tiles can grow."
+  source: "PL-tpu"

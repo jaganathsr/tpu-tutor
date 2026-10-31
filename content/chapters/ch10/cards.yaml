@@ -1,0 +1,85 @@
+# Chapter 10 flashcards.
+- id: ch10-c-pallas
+  front: What is Pallas, and how does it reach a TPU?
+  back: "JAX's kernel language: a function over Refs, run per grid point, with BlockSpecs. On TPU it lowers through Mosaic to a custom call inside the XLA program."
+  source: PL-tpu
+- id: ch10-c-grid
+  front: How does a Pallas TPU grid run?
+  back: "Sequentially, lexicographic order, on one TensorCore. Parallel axes can split across megacore cores (v4, v5p). Put the reduction axis last."
+  source: PL-tpu, PL-pipe
+- id: ch10-c-blockspec
+  front: What does a BlockSpec do?
+  back: "Gives a block shape and an index map from grid indices to block indices. The pipeline DMAs those blocks HBM→VMEM, double-buffered."
+  source: PL-grid
+- id: ch10-c-rule
+  front: Pallas block-shape rule?
+  back: "Last two dimensions divisible by 8 and 128, or equal to the full array dimensions."
+  source: PL-tpu
+- id: ch10-c-spaces
+  front: Pallas TPU memory spaces?
+  back: "VMEM (default for kernel refs; scratch persists across steps), SMEM (scalars, indices), pl.ANY (left in HBM for manual DMA)."
+  source: PL-tpu
+- id: ch10-c-skip
+  front: When does Pallas skip a DMA between grid steps?
+  back: "When a block's index is the same as in the previous step, e.g. the output block across a reduction axis placed last."
+  source: PL-tpu
+- id: ch10-c-tile
+  front: Intensity of a Pallas matmul tile?
+  back: "About $b_m b_n/(b_m + b_n)$ FLOP/B. 256² gives 128, 512² gives 256, 1024² gives 512 (12 MiB of VMEM). Ironwood's ridge is 313."
+  source: SB1, derived
+- id: ch10-c-sparse
+  front: How is paged attention expressed in Pallas?
+  back: "Scalar prefetch: index maps read a block table in SMEM to choose which KV page each grid step loads."
+  source: PL-sparse
+- id: ch10-c-rdma
+  front: How do Pallas kernels communicate between chips?
+  back: "pltpu.make_async_remote_copy: VMEM to a remote chip's VMEM over ICI, with send and receive semaphores. The basis of hand-written ring collectives."
+  source: PL-dist
+- id: ch10-c-when
+  front: When is a Pallas kernel worth writing?
+  back: "When XLA cannot express the access pattern: ragged or paged attention, grouped MoE matmuls, unusual quantized matmuls, custom collective overlap. Not for missing fusions or bad shardings."
+  source: PL-tpu
+- id: ch10-c-nki
+  front: Pallas TPU against NKI and Mosaic GPU?
+  back: "NKI: explicit HBM→SBUF DMAs and engine choice, lower-level. Mosaic GPU: same Pallas concepts with warpgroups and TMA; default GPU backend since JAX 0.9."
+  source: A-nki, PL-gpu
+- id: ch10-c-capture
+  front: How do you capture a TPU profile from JAX?
+  back: "with jax.profiler.trace(dir): run the step and block_until_ready(); view with xprof --logdir. Or jax.profiler.start_server(9999) for on-demand capture."
+  source: XP-jax
+- id: ch10-c-tpuinf-prof
+  front: tpu-inference profiling options?
+  back: "examples/tpu_profiling.py (prefill: batch 1, long input; decode: batch 256, 1-token input and output); PHASED_PROFILING_DIR; USE_JAX_PROFILER_SERVER."
+  source: R-tpuinf-prof
+- id: ch10-c-trace
+  front: Which Trace Viewer row shows what actually ran?
+  back: "XLA Ops, named by HLO op names. Scope rows are approximations. TPU:0 is usually enough. W/S zoom, A/D pan."
+  source: SB9, XP-trace
+- id: ch10-c-overlap
+  front: How do synchronous and overlapped collectives look in a trace?
+  back: "Synchronous: a long collective bar alone on XLA Ops, the core idle. Overlapped: -start and -done markers with compute fusions between them."
+  source: X-async
+- id: ch10-c-opline
+  front: Parts of an HLO op line?
+  back: "Name; dtype[shape]; {minor-to-major : T(tiles) S(space)}; op(operands); attributes such as kind, calls, replica_groups."
+  source: SB9
+- id: ch10-c-space
+  front: Memory space codes in HLO layouts?
+  back: "S(1) is VMEM; S(0), or none, is HBM. The book does not identify S(2) and S(3)."
+  source: SB9
+- id: ch10-c-fusion
+  front: What does a TPU fusion contain?
+  back: "At most one matmul plus related elementwise (VPU) ops. A fusion calling all-reduce-scatter is a ReduceScatter."
+  source: SB9
+- id: ch10-c-tools
+  front: XProf tools and what each answers?
+  back: "Op Profile: which ops cost time. Roofline Model: which resource each op is bound by (HBM, VMEM, CMEM lines). Memory Viewer: peak HBM and what is live. Graph Viewer: HLO and shardings. Megascale: DCN."
+  source: XP-opprof, XP-roof, XP-mem
+- id: ch10-c-profile-check
+  front: Book's worked profile, prediction against measurement?
+  back: "FFW matmul on 8 TPU v2 cores: 95.6 ms predicted, 96 ms measured. ReduceScatter: 1.1 ms predicted, 1.13 ms measured."
+  source: SB9
+- id: ch10-c-capstone
+  front: Design review answer for LLaMA-3-70B on Ironwood, 30 ms/token at 32k?
+  back: "4-chip replicas, fp8 weights and KV, batch about 140, step about 28 ms, about 1,257 tokens/s per chip; KV-read-bound; separate 4-chip prefill servers (TTFT about 337 ms), about 3 per decode replica."
+  source: derived

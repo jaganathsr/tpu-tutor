@@ -1,0 +1,80 @@
+<Slide title="Pallas TPU in one kernel">
+
+```python
+pl.pallas_call(
+    matmul_kernel,
+    grid=(m // bm, n // bn, k // bk),          # sequential, reduction axis last
+    in_specs=[pl.BlockSpec((bm, bk), lambda i, j, kk: (i, kk)),
+              pl.BlockSpec((bk, bn), lambda i, j, kk: (kk, j))],
+    out_specs=pl.BlockSpec((bm, bn), lambda i, j, kk: (i, j)),
+    scratch_shapes=[pltpu.VMEM((bm, bn), jnp.float32)],     # fp32 accumulator
+    compiler_params=pltpu.CompilerParams(
+        dimension_semantics=("parallel", "parallel", "arbitrary")))
+```
+
+- BlockSpecs drive double-buffered HBM→VMEM DMAs. Last two block dims: multiples of 8 and 128.
+- No thread blocks: the grid is a loop on one TensorCore.
+
+</Slide>
+
+<Slide title="Tile size is arithmetic intensity">
+
+| Tile | FLOP/B | VMEM | Ironwood (ridge 313) |
+|---|---|---|---|
+| 256² | 128 | 1.5 MiB | memory-bound |
+| 512² | 256 | 4 MiB | memory-bound |
+| 1024² | 512 | 12 MiB | compute-bound |
+| 2048² | 1024 | 40 MiB | compute-bound |
+
+Write Pallas for access patterns XLA cannot express: paged attention (scalar prefetch), grouped MoE, quantized matmuls, collective matmul (remote DMA).
+
+</Slide>
+
+<Slide title="Capture and read a trace">
+
+- `with jax.profiler.trace(dir): ...` then `xprof --logdir dir`.
+- tpu-inference: `PHASED_PROFILING_DIR`, `USE_JAX_PROFILER_SERVER`.
+- Read the **XLA Ops** row of TPU:0. Layers repeat.
+- Synchronous collective: a long bar alone, the core idle.
+- Overlapped: `all-gather-start` … compute … `all-gather-done`.
+
+</Slide>
+
+<Slide title="Reading an op">
+
+```
+%fusion.3 = bf16[32,32,4096]{2,1,0:T(8,128)(2,1)S(1)} fusion(...), kind=kCustom, calls=%all-reduce-scatter.3
+```
+
+- `{2,1,0}`: minor-to-major. `T(8,128)(2,1)`: tiles, bf16 pairs packed.
+- `S(1)`: VMEM. No S: HBM.
+- `calls=%all-reduce-scatter`: a ReduceScatter. One matmul per fusion at most.
+- `replica_groups={{0,16,...,112},...}`: 8 per group, 8-way model parallel.
+
+</Slide>
+
+<Slide title="Tools">
+
+| Tool | Answers |
+|---|---|
+| Op Profile | which ops cost the time |
+| Roofline Model | which resource each op is bound by (HBM, VMEM lines) |
+| Memory Viewer | peak HBM and what is live |
+| Graph Viewer | HLO graph and shardings |
+| Megascale Viewer | DCN traffic across slices |
+
+Book's check: 95.6 ms predicted, 96 ms measured.
+
+</Slide>
+
+<Slide title="Design review: LLaMA-3-70B on Ironwood, 30 ms/token at 32k">
+
+| Replica | Batch | Step | tok/s/chip |
+|---|---|---|---|
+| 4 chips, bf16 | 63 | 27.7 ms | 569 |
+| 4 chips, fp8 W + KV | 140 | 27.9 ms | 1,257 |
+| 8 chips, fp8 W + KV | 294 | 27.9 ms | 1,316 |
+
+KV-read-bound. Choose 4-chip fp8 replicas; prefill on separate 4-chip servers (337 ms TTFT), about 3 per decode replica.
+
+</Slide>

@@ -501,3 +501,5 @@ figure.listing figcaption { font-family: var(--font-ui); font-size: var(--fs-xsm
 figure.listing pre { font-size: 0.74rem; line-height: 1.45; max-height: 26rem; border-left: 3px solid var(--dayc, var(--accent-strong)); }
 .slide-body figure.listing pre { font-size: 1.02cqw; max-height: 32cqw; white-space: pre; }
 .slide-body figure.listing figcaption { font-size: 1.3cqw; }
+.slide-body pre { font-size: 1.15cqw; line-height: 1.45; padding: 1cqw 1.4cqw; }
+.decoder-table th { width: 8.5rem; white-space: nowrap; } .decoder-table td { white-space: normal; overflow-wrap: anywhere; }
