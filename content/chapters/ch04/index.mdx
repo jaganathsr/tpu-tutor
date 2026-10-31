@@ -141,13 +141,13 @@ An MoE layer replaces one MLP with $E$ expert MLPs, of which $k$ run per token. 
 The roofline penalty follows directly. A batch of $B$ tokens spreads over $E$ experts, so each expert's weight matrix sees about $Bk/E$ tokens. For each expert matmul to be compute-bound, $Bk/E$ must exceed the dense threshold:
 
 $$
-B > \frac{E}{k} \cdot \beta \cdot \frac{C}{W_\text{hbm}}
+B > \frac{E}{k} \cdot \frac{C_\text{math}}{W_\text{hbm}} \cdot \frac{\text{bytes per weight}}{2}
 \tag{4.5}
 $$
 
 <Gloss>An MoE needs E/k times the batch of a dense model to keep its matrix units busy, because each expert sees only its share of the tokens.</Gloss>
 
-With DeepSeek-V3's sparsity ($E = 256$, $k = 8$, so $E/k = 32$) and int8 weights on v5e, $B > 3{,}840$ tokens <Cite id="SB4" at="#a-few-problems-to-work" s="Q8" />. On Ironwood with fp8 weights and bf16 math, $B > 5{,}000$. With fp8 math as well, the ridge doubles and $B > 20{,}000$ <Derived />. MoE decode is memory-bound at any realistic batch. MoE also adds two AllToAll collectives per layer, to route tokens to experts and back, which Chapter 5 costs.
+With DeepSeek-V3's sparsity ($E = 256$, $k = 8$, so $E/k = 32$) and int8 weights on v5e, $B > 3{,}840$ tokens <Cite id="SB4" at="#a-few-problems-to-work" s="Q8" />. On Ironwood with fp8 weights and bf16 math, $B > 5{,}000$. With fp8 math as well, the ridge doubles and $B > 10{,}000$ <Derived />. MoE decode is memory-bound at any realistic batch. MoE also adds two AllToAll collectives per layer, to route tokens to experts and back, which Chapter 5 costs.
 
 <AnalogyBreaks>
 <p>On a GPU, MoE routing produces ragged per-expert batches that a grouped-GEMM kernel handles directly, at any shape. On a TPU, ragged shapes fight the static-shape compiler. Expert batches are padded to a fixed capacity, or handled by dedicated kernels: the megablox grouped matmul and `jax.lax.ragged_dot`, plus SparseCore gather and scatter for the routing itself <Cite id="SB10" at="#worked-problems" /> <Cite id="R-tpuinf" />. Chapter 8 shows how tpu-inference does it.</p>

@@ -1,0 +1,194 @@
+---
+objectives:
+  - I can state the decode step-time lower bound and the general step-time formula, and compute both for a model on a slice.
+  - I can compute the compute-bound decode batch for each weight and math precision on v5e, Ironwood, 8i and H100, and explain why KV growth makes it unreachable at long context.
+  - I can explain why prefill is compute-bound and decode is not, and what that implies for disaggregated serving and the prefill-to-decode server ratio.
+  - I can choose a decode sharding — model parallelism up to F/(Bβ), the KV cache split by heads then by batch, never FSDP — and say when its collectives are latency-bound.
+  - I can explain int8, fp8 and fp4 weights, activations and KV on TPU, say which generations have native fp8, and describe how Qwix applies post-training quantization.
+  - I can explain speculative decoding as spending idle FLOPs in a memory-bound step.
+teachback:
+  - Your PM wants 2× decode throughput on the same chips. List what moves the number and by how much — batch, fp8 weights, fp8 KV, more TP, speculative decoding.
+  - Why is FSDP an order-of-magnitude regression for decode, when it is free for training?
+  - At 32k context, why does 8i's FP8 peak barely matter for decode, and what does matter?
+  - How many prefill servers do you need per decode server for 8k prompts and 512-token answers, and why?
+sources:
+  - { id: SB7, anchor: "#the-basics-of-transformer-inference", label: "Basics" }
+  - { id: SB7, anchor: "#linear-operations-what-bottlenecks-us", label: "Linear ops" }
+  - { id: SB7, anchor: "#theoretical-estimates-for-llm-latency-and-throughput", label: "Latency and throughput bounds" }
+  - { id: SB7, anchor: "#modeling-throughput-and-latency-for-llama-2-13b", label: "LLaMA-2-13B tables" }
+  - { id: SB7, anchor: "#tricks-for-improving-generation-throughput-and-latency", label: "Tricks" }
+  - { id: SB7, anchor: "#distributing-inference-over-multiple-accelerators", label: "Sharding inference" }
+  - { id: SB7, anchor: "#designing-an-effective-inference-engine", label: "Engine design" }
+  - { id: SB7, anchor: "#appendix-c-latency-bound-communications", label: "Latency-bound comms" }
+  - { id: SB7, anchor: "#appendix-d-speculative-sampling", label: "Speculative sampling" }
+  - { id: SB7, anchor: "#worked-problems", label: "Problems" }
+  - { id: SB8, anchor: "#worked-problems", label: "Serving problems" }
+  - { id: P-ESTI }
+  - { id: R-qwix }
+  - { id: R-tpuinf, label: "Qwix config in tpu-inference" }
+  - { id: D-arch, label: "dtypes per generation" }
+  - { id: D-v5p }
+  - { id: D-7x }
+  - { id: G-8dd }
+  - { id: J-hw }
+---
+
+Inference is two workloads in one server <Cite id="SB7" at="#the-basics-of-transformer-inference" />. **Prefill** processes the whole prompt in one pass and writes the KV cache; it looks like a training forward pass and is compute-bound. **Decode** generates one token per sequence per step, reading every weight and every active KV cache to do so; it is memory-bound. Time to first token (TTFT) is set by prefill. Time per output token is set by decode. Every serving design in Chapter 8 starts from this split.
+
+## The decode step
+
+In decode, each linear layer multiplies a $[B, D]$ activation by a $[D, F]$ weight, where $B$ is the number of sequences in the batch. From Chapter 1, it is compute-bound when <Cite id="SB7" at="#linear-operations-what-bottlenecks-us" />
+
+$$
+B > B_\text{crit} \approx \frac{C_\text{math}}{W_\text{hbm}} \cdot \frac{\text{bytes per weight}}{2}
+\tag{7.1}
+$$
+
+<Gloss>Weight quantization lowers the batch needed; faster low-precision math raises it again. This is formula 1.4; the Scaling Book writes the bf16-math case as β · C/W.</Gloss>
+
+| Chip | bf16 weights and math | 8-bit weights, bf16 math | 8-bit weights and math |
+|---|---|---|---|
+| TPU v5e | 241 | 120 | 240 (int8) |
+| TPU v6e | 560 | 280 | 560 (int8); 280 (fp8 runs at the BF16 rate) |
+| TPU7x Ironwood | 313 | 156 | 313 (fp8) |
+| TPU 8i <Provisional /> | 128 | 64 | 512 (fp8) |
+| H100 | 295 | 148 | 295 (fp8) |
+
+Computed by `scripts/ch07_inference.py` from `scripts/specs.py`.
+
+Attention is different. From Chapter 4, decode attention has an arithmetic intensity of about $G$, the number of query heads per KV head, at any batch size. It is always bandwidth-bound. Put together, the Scaling Book's general step time is <Cite id="SB7" at="#theoretical-estimates-for-llm-latency-and-throughput" />
+
+$$
+T_\text{step} = \underbrace{\frac{B \cdot \text{KV bytes per sequence}}{W_\text{hbm}}}_{\text{attention}} + \underbrace{\max\left(\frac{2B \cdot \text{params}}{C}, \frac{\text{param bytes}}{W_\text{hbm}}\right)}_{\text{MLP and projections}}
+\tag{7.2}
+$$
+
+<Gloss>Every step reads every sequence's KV cache, and either reads every weight or does the matmul FLOPs, whichever takes longer. With N chips, C and W are summed over the chips.</Gloss>
+
+For small batches, the lower bound reduces to bytes over bandwidth: $(B \cdot \text{KV} + \text{params}) / W_\text{hbm}$. A decode step can never be faster than reading the weights once.
+
+<Worked title="A 30B model on a v5e 4×4 and on four Ironwood chips">
+
+Adapted from the Scaling Book's pop quiz <Cite id="SB7" at="#theoretical-estimates-for-llm-latency-and-throughput" />. A 30B dense model with int8 weights, bf16 math, 8,192-token context, 100 kB of KV per token.
+
+| | v5e 4×4 (16 chips) | Ironwood, 4 chips |
+|---|---|---|
+| Batch 4 | 2.5 ms (weights: 30 GB / 13 TB/s) | 1.1 ms |
+| Batch 256 | 20.9 ms (KV 210 GB dominates) | 8.8 ms |
+
+The book gives 2.5 ms and about 21 ms for v5e. At batch 256, the MLP is compute-bound and the KV read still takes most of the step. Computed by `scripts/ch07_inference.py`.
+
+</Worked>
+
+### KV growth makes the breakeven unreachable
+
+At long context, two things stop the batch from reaching $B_\text{crit}$. The KV cache fills HBM before the batch gets there. And even if it fit, every extra sequence adds its whole cache to the step, so throughput saturates. The Scaling Book's LLaMA-2-13B tables on 8 v5e chips show both <Cite id="SB7" at="#modeling-throughput-and-latency-for-llama-2-13b" />:
+
+- With standard multi-head attention, at 8k context, the model runs out of memory beyond batch 16.
+- With a KV cache 5× smaller (GQA), batch 64 fits, and throughput keeps rising toward batch 240.
+
+<Worked title="LLaMA-3-70B on 8 Ironwood chips at 32k context">
+
+From formula 7.2, computed by `scripts/ch07_inference.py` <Derived />.
+
+| Weights, KV | Batch | Step | KV / weights / FLOPs | Tokens/s per chip |
+|---|---|---|---|---|
+| bf16, bf16 | 16 | 5.3 ms | 2.9 / 2.4 / 0.1 ms | 377 |
+| bf16, bf16 | 64 | 14.0 ms | 11.6 / 2.4 / 0.5 ms | 570 |
+| bf16, bf16 | 128 | 25.7 ms | 23.3 / 2.4 / 1.0 ms | 623 |
+| fp8, fp8 | 64 | 7.0 ms | 5.8 / 1.2 / 0.5 ms | 1,140 |
+| fp8, fp8 | 128 | 12.8 ms | 11.6 / 1.2 / 1.0 ms | 1,247 |
+
+At 32k context the step is KV-bound from batch 16 upward, and the matrix units are busy under 10% of the time. Halving bytes with fp8 weights and fp8 KV doubles throughput. Doubling FLOPs would change nothing. This is the case Chapter 1 made for TPU 8i's 8,601 GB/s and 384 MB of SRAM.
+
+</Worked>
+
+<Interactive caption={<><b>Prefill and decode calculator.</b> Choose a model, chip, chip count and precisions. The readout gives memory per chip, the decode step split into KV read, weight read and MLP FLOPs, throughput per chip, the batch where the MLP becomes compute-bound, an estimate of tensor-parallel collective time, and prefill time to first token. The curve shows throughput per chip against step latency for every batch that fits. All figures are lower bounds.</>}>
+  <BreakevenCalc />
+</Interactive>
+
+## Prefill
+
+Prefill pushes $T$ prompt tokens through every layer at once. Its linear layers have an effective batch of $T$, usually far above $B_\text{crit}$. Its attention has intensity about $T/2$, compute-bound above a few hundred tokens <Cite id="SB7" at="#what-about-attention" />. Prefill time is therefore FLOPs over achieved FLOP/s:
+
+$$
+T_\text{prefill} \approx \frac{2 \cdot \text{params} \cdot T}{N \cdot C \cdot \text{MFU}}
+\tag{7.3}
+$$
+
+<Gloss>Prefill is a training forward pass without the backward: time scales with prompt tokens.</Gloss>
+
+An 8,192-token prompt on LLaMA-3-70B takes about 0.91 s on 16 v5e chips at 40% MFU <Cite id="SB8" at="#worked-problems" />, and about 157 ms on 8 Ironwood chips <Derived />. Because prefill is compute-bound, batching several prompts adds latency with little gain in throughput. The book recommends prefilling at batch 1 unless prompts are very short <Cite id="SB7" at="#the-basics-of-transformer-inference" />.
+
+## Disaggregated serving
+
+Prefill wants compute and little memory. Decode wants memory bandwidth and HBM for many caches. They also want different sharding. Running them on separate servers lets each be sized for its job, at the cost of sending each request's KV cache from the prefill server to the decode server <Cite id="SB7" at="#designing-an-effective-inference-engine" />.
+
+The server ratio follows from throughput. The Scaling Book's example: 8,192-token prompts take 0.91 s to prefill, and decode runs batch 32 at 19 ms per step for 512 tokens. Prefill servers then complete $P / 0.91$ requests per second and decode servers $32G / (0.019 \cdot 512)$. Matching them gives $P \approx 3G$: three prefill servers per decode server <Cite id="SB8" at="#worked-problems" s="Q12" />.
+
+## Sharding for decode
+
+The training strategies of Chapter 6 mostly do not apply <Cite id="SB7" at="#distributing-inference-over-multiple-accelerators" />:
+
+- **No FSDP.** FSDP moves weights over ICI every step. In decode, a step's weight bytes over ICI take far longer than over HBM, so it costs a large multiple of the step. The book calls it "an easy and common way to have order of magnitude regressions".
+- **No data parallelism within a server.** It just runs independent replicas; use separate replicas.
+- **No sequence parallelism.** There is one new token per sequence.
+- **Model parallelism, further than in training.** Each extra chip adds HBM bandwidth, which is what decode needs. ICI becomes the bottleneck only when
+
+$$
+Y > \frac{F}{B \cdot \beta_\text{ici}}, \qquad \beta_\text{ici} = \frac{W_\text{hbm}}{W_\text{ici}}
+\tag{7.4}
+$$
+
+<Gloss>Shard the model until the per-chip weight read becomes shorter than the activation collectives.</Gloss>
+
+On v5e, $\beta_\text{ici} \approx 8$, so a model with $F = 16{,}384$ at batch 32 can be split about 64 ways <Cite id="SB7" at="#generation" />. On Ironwood, 7,380 GB/s of HBM against 200 GB/s per axis gives $\beta_\text{ici} \approx 37$. LLaMA-3-70B at batch 32 can be split about 24 ways before ICI binds <Derived />.
+
+**The KV cache.** Shard it by KV heads first, which is free under head-sharded attention but limited to $K$ ways (8 for LLaMA-3). Beyond that, shard it by batch. That costs two AllToAlls per attention layer: one to move queries from head sharding to batch sharding, one to move outputs back <Cite id="SB7" at="#sharding-the-kv-cache" />.
+
+**Latency-bound collectives.** Decode activations are small. A batch of 16 at $D = 8{,}192$ in int8 is 131 kB per collective. An 8-way collective is latency-bound below about 360 kB on v5e <Cite id="SB7" at="#appendix-c-latency-bound-communications" />, and below about 800 kB on Ironwood <Derived />. Decode collectives are almost always in this regime, where each costs about hops × 1 µs. This is the traffic TPU 8i's 7-hop Boardfly network and its Collectives Acceleration Engine target (Chapter 3).
+
+<GpuAnalogy>
+<p>On a GPU node the same reasoning applies with NVLink in place of ICI: tensor parallelism across the 8 GPUs of a node is the standard way to add HBM bandwidth to decode. The TPU difference is reach. ICI extends model parallelism to 16, 32 or 64 chips without leaving the high-bandwidth domain. The cost is multiple hops and no in-switch reduction, which makes latency, not bandwidth, the constraint for small decode batches.</p>
+</GpuAnalogy>
+
+## Quantization on TPU
+
+Fewer bytes per weight and per KV entry is the most direct lever on decode.
+
+| Generation | Native low-precision matrix math | Source |
+|---|---|---|
+| v5e, v6e | int8 (v6e also int4); fp8 listed at the BF16 rate | <Cite id="D-arch" /> <Cite id="J-hw" /> |
+| v5p | int8; fp8 listed at the BF16 rate | <Cite id="D-v5p" /> |
+| Ironwood | fp8 at 2× BF16 | <Cite id="D-7x" /> |
+| TPU 8t, 8i | fp4 headline; fp8 and int formats per the JAX table | <Cite id="G-8dd" /> <Cite id="J-hw" /> |
+
+Where the low-precision rate equals the BF16 rate, quantization still saves HBM bytes and capacity; it just does not speed up the arithmetic.
+
+**Qwix** is Google's JAX quantization library and the one tpu-inference uses for online quantization of JAX models <Cite id="R-qwix" /> <Cite id="R-tpuinf" />.
+
+- It works by interception: while the model runs, it intercepts `jax.lax.dot_general`, `jnp.einsum`, `conv_general_dilated` and `ragged_dot`, and substitutes quantized versions according to rules.
+- Each rule matches modules by regex and sets a weight and an activation dtype, for example `QuantizationRule(module_path='.*', weight_qtype='int8', act_qtype='int8')`.
+- It supports weight-only, dynamic-range and static-range schemes, native int4, int8 and fp8, and emulated narrower formats.
+- Interception is disabled inside Pallas kernels, which have their own `qwix.pallas` helpers.
+- In tpu-inference, an fp8 configuration is passed as `--additional_config` with `weight_qtype` and `act_qtype` set to `float8_e4m3fn`.
+
+**KV-cache quantization** halves the attention term of formula 7.2. On a long-context workload that is most of the step: the 70B example above went from 14.0 ms to 7.0 ms at batch 64 when both weights and KV moved to fp8.
+
+## Speculative decoding
+
+A small draft model proposes $k$ tokens; the large model scores all $k$ in one forward pass and accepts the longest correct prefix. Because a decode step is memory-bound, scoring $k$ tokens costs nearly the same as scoring one: the extra FLOPs come from idle matrix units, and the weights and KV are read once. With greedy decoding the output is unchanged, and probabilistic acceptance preserves the sampling distribution. The book's example of Chinchilla-70B with a 4B drafter finds the best lookahead at 3–4 tokens for summarization <Cite id="SB7" at="#appendix-d-speculative-sampling" />. Speculation trades throughput for per-token latency when the batch is small. At long context it can help throughput too, because KV reads are shared across the speculated tokens.
+
+## MoE inference
+
+From Chapter 4, an MoE needs $E/k$ times the batch to keep its expert matmuls compute-bound. The Scaling Book's chapter 7 model as an MoE with 16 experts and 2 active needs 1,920 tokens at bf16 on v5e <Cite id="SB7" at="#worked-problems" s="Q5" />. Its KV cache per token is unchanged, and its weight bytes grow 12×. MoE decode is weight-bandwidth-bound and capacity-bound at almost any batch. Serving it pays two AllToAlls per layer for expert routing, at decode sizes that are latency-bound. All three are pressures behind TPU 8i's design.
+
+<Worked title="Batch and latency for the book's 18B model">
+
+The Scaling Book's Chapter 7, problems 1–3 <Cite id="SB7" at="#worked-problems" />: $L = 64$, $D = 4{,}096$, $F = 16{,}384$, 32 query heads, 8 KV heads of dimension 256, with everything in int8 on a v5e 4×4.
+
+- Parameters: 18.4B. KV per token: $2 \cdot 64 \cdot 8 \cdot 256 = 262$ kB.
+- A 128k-token sequence holds 33.5 GB of cache. After 18.4 GB of weights in 256 GB, the largest batch is 7. With a single KV head ($K = 1$) it is about 56.
+- Reading all weights: 18.4 GB over 16 × 820 GB/s = 1.4 ms, the floor on step latency.
+
+</Worked>

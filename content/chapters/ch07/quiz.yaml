@@ -1,0 +1,139 @@
+# Chapter 7 quiz. Numbers recomputed in scripts/ch07_inference.py.
+- id: ch07-bcrit-int8w
+  type: numeric
+  prompt: "On Ironwood (313 FLOP/B BF16 ridge), weights are stored in fp8 and the math stays in bf16. Above what decode batch are the linear layers compute-bound?"
+  answer: 156
+  tolerance: 0.03
+  unit: sequences
+  explanation: "$B_\\text{crit} \\approx (C/W) \\cdot (\\text{bytes per weight})/2 = 313 \\cdot 1/2 = 156$. On v5e the same change gives 120."
+  source: "SB7 #linear-operations-what-bottlenecks-us"
+
+- id: ch07-bcrit-fp8math
+  type: mcq
+  prompt: "Ironwood runs fp8 math at 4,614 TFLOP/s, twice BF16. With fp8 weights and fp8 math, the compute-bound decode batch is about:"
+  options:
+    - text: "313, the same as bf16"
+      correct: true
+      why: "Bytes per weight halve (×1/2) and the math rate doubles (×2). The step is faster, but the batch at which the MXUs saturate is unchanged."
+    - text: "156"
+      why: "That is fp8 weights with bf16 math."
+    - text: "625"
+      why: "625 is the fp8 ridge point. The batch is half of it, because each 1-byte weight carries 2 FLOPs per token."
+    - text: "1,250"
+      why: "That would need both the rate to double and the bytes to double."
+  source: "D-7x"
+
+- id: ch07-step-small
+  type: numeric
+  prompt: "A 30B dense model with int8 weights (30 GB) runs on a v5e 4×4 (16 chips, 820 GB/s each, 197 TFLOP/s bf16). Batch 4, 8,192-token context, 100 kB of KV per token. Lower bound on the decode step, in ms?"
+  answer: 2.5
+  tolerance: 0.05
+  unit: ms
+  explanation: "KV: $4 \\cdot 8192 \\cdot 100\\,\\text{kB} = 3.3$ GB. Bytes $(30 + 3.3)$ GB over $16 \\cdot 820$ GB/s = 2.5 ms. FLOPs are negligible at batch 4."
+  adapted_from: SB7 pop quiz
+  source: "SB7 #theoretical-estimates-for-llm-latency-and-throughput"
+
+- id: ch07-step-large
+  type: numeric
+  prompt: "Same model and slice at batch 256. KV is now 210 GB. Using $T = B \\cdot \\text{KV}/W + \\max(2B \\cdot \\text{params}/C, \\text{param bytes}/W)$, what is the step lower bound in ms?"
+  answer: 20.9
+  tolerance: 0.05
+  unit: ms
+  explanation: "KV: 210 GB / 13.1 TB/s = 16.0 ms. MLP: $\\max(2 \\cdot 256 \\cdot 30\\times10^9 / (16 \\cdot 1.97\\times10^{14}), 30\\ \\text{GB}/13.1\\ \\text{TB/s}) = \\max(4.9, 2.3) = 4.9$ ms. Total about 20.9 ms; the book says about 21."
+  adapted_from: SB7 pop quiz
+  source: "SB7 #theoretical-estimates-for-llm-latency-and-throughput"
+
+- id: ch07-long-context
+  type: scenario
+  prompt: "LLaMA-3-70B decodes at 32k context on 8 Ironwood chips at batch 64: KV read 11.6 ms, weight read 2.4 ms, MLP FLOPs 0.5 ms. Which change raises throughput the most?"
+  options:
+    - text: "Quantize the KV cache to fp8: the step is dominated by the KV read, which halves."
+      correct: true
+      why: "fp8 KV (and fp8 weights) take the step from 14.0 ms to 7.0 ms at the same batch, doubling tokens/s."
+    - text: "Use fp8 math to double FLOP/s."
+      why: "FLOPs are 0.5 ms of a 14 ms step. Faster math changes almost nothing."
+    - text: "Double the batch."
+      why: "Each sequence adds its own KV read. Batch 128 takes 25.7 ms, so throughput rises only from 570 to 623 tokens/s per chip."
+    - text: "Shard the weights over 16 chips with FSDP."
+      why: "FSDP moves weights over ICI every step, a large regression in decode."
+  source: "SB7 #theoretical-estimates-for-llm-latency-and-throughput"
+
+- id: ch07-fsdp
+  type: mcq
+  prompt: "Why is FSDP 'an easy and common way to have order of magnitude regressions' in decode?"
+  options:
+    - text: "It AllGathers every layer's weights over ICI each step, and ICI is far slower than HBM, while decode steps are already bound by moving weights."
+      correct: true
+      why: "On Ironwood one ICI link is 74× slower than HBM. In training, FSDP's weight traffic is amortized over a large batch; in decode it is not."
+    - text: "FSDP is not supported in JAX inference."
+      why: "It is expressible; it is just the wrong strategy."
+    - text: "It replicates the KV cache on every chip."
+      why: "The KV cache sharding is separate. The problem is moving weights."
+    - text: "It requires a larger batch to fit in memory."
+      why: "FSDP reduces memory per chip. The issue is communication time per step."
+  source: "SB7 #generation"
+
+- id: ch07-mp-limit
+  type: numeric
+  prompt: "In decode, model parallelism becomes ICI-bound when $Y > F/(B \\cdot \\beta_\\text{ici})$, with $\\beta_\\text{ici} = W_\\text{hbm}/W_\\text{ici}$. On Ironwood, $\\beta_\\text{ici} \\approx 37$. For $F$ = 28,672 at batch 32, up to how many ways?"
+  answer: 24
+  tolerance: 0.05
+  unit: ways
+  explanation: "$28672 / (32 \\cdot 37) \\approx 24$. On v5e ($\\beta \\approx 8$) the book's example, $F = 16{,}384$ at batch 32, allows 64 ways. Decode tolerates far more model parallelism than training."
+  source: "SB7 #generation"
+
+- id: ch07-latency-bound
+  type: scenario
+  prompt: "An 8-way tensor-parallel decode step at batch 16, $D = 8192$, int8 activations, runs on v5e. Each TP collective moves 131 kB. What sets its time?"
+  options:
+    - text: "Hop latency: an 8-way collective on v5e is latency-bound below about 360 kB."
+      correct: true
+      why: "Per-hop chunks are 131/8 = 16 kB, far below the 45 kB per hop at which bandwidth takes over."
+    - text: "ICI bandwidth."
+      why: "At 16 kB per hop the bandwidth term is a fraction of the 1 µs hop latency."
+    - text: "HBM bandwidth."
+      why: "The collective runs over ICI."
+    - text: "The VPU."
+      why: "Reductions in a collective are tiny at this size."
+  source: "SB7 #appendix-c-latency-bound-communications"
+
+- id: ch07-prefill
+  type: numeric
+  prompt: "Prefill of an 8,192-token prompt for LLaMA-3-70B (70 billion parameters) on 16 v5e chips (197 TFLOP/s each) at 40% MFU. Time in seconds?"
+  answer: 0.91
+  tolerance: 0.04
+  unit: s
+  explanation: "$2 \\cdot 70\\times10^9 \\cdot 8192 / (16 \\cdot 1.97\\times10^{14} \\cdot 0.4) = 0.91$ s. On 8 Ironwood chips about 157 ms."
+  adapted_from: SB8 Q10
+  source: "SB8 #worked-problems"
+
+- id: ch07-disagg
+  type: numeric
+  prompt: "Prefill of an 8,192-token prompt takes 0.91 s per request on one server. Decode runs batch 32 at 19 ms per step for 512 tokens on another. How many prefill servers per decode server?"
+  answer: 3
+  tolerance: 0.05
+  unit: ×
+  explanation: "Decode completes $32 / (0.019 \\cdot 512) = 3.3$ requests/s per server; prefill completes $1/0.91 = 1.1$. Ratio about 3."
+  adapted_from: SB8 Q12
+  source: "SB8 #worked-problems"
+
+- id: ch07-qwix
+  type: mcq
+  prompt: "How does Qwix apply post-training quantization to a JAX model?"
+  options:
+    - text: "It intercepts jax.lax.dot_general, jnp.einsum, conv and ragged_dot calls while the model runs and substitutes quantized versions per regex rules."
+      correct: true
+      why: "Rules name a module-path regex, a weight dtype and an activation dtype. Interception is disabled inside Pallas kernels, which use qwix.pallas helpers."
+    - text: "It rewrites the model's HLO after compilation."
+      why: "It works at the JAX level, before lowering."
+    - text: "It requires retraining with fake quantization."
+      why: "Qwix supports QAT, but PTQ needs no retraining."
+    - text: "It quantizes only the KV cache."
+      why: "Rules apply to weights and activations of matched modules."
+  source: "R-qwix"
+
+- id: ch07-explain
+  type: free
+  prompt: "Your PM asks for 2× decode throughput on the same Ironwood chips for a 70B model at 32k context. Explain to a GPU engineer what moves the number and by how much."
+  model_answer: "At 32k context the step is dominated by reading KV caches: at batch 64 on 8 chips, about 11.6 ms of KV, 2.4 ms of weights and 0.5 ms of FLOPs. FLOPs barely matter, so fp8 math does nothing. Raising the batch adds KV time one-for-one: batch 128 gives only about 10% more tokens/s and fills HBM. What works is fewer bytes: fp8 KV halves the dominant term, and with fp8 weights as well the step at batch 64 drops from 14 to 7 ms, doubling throughput. GQA or MLA-style KV compression in the model does the same at the architecture level. Speculative decoding helps per-user latency and shares KV reads across speculated tokens. More model parallelism adds HBM bandwidth per request (lower latency) but not throughput per chip. Separating prefill onto its own servers keeps long prefills from stalling decode."
+  source: "SB7 #tricks-for-improving-generation-throughput-and-latency"

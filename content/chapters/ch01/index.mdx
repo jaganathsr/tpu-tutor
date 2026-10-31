@@ -182,11 +182,13 @@ Solving Eq. 1.3 exactly for this shape puts the compute-bound batch at 329 token
 Store the weights in int8 or fp8 and keep the math in bf16. FLOPs stay at $2BDF$, but weight bytes halve to $DF$, so intensity becomes about $2B$:
 
 $$
-B_\text{crit} = \beta \cdot \frac{C}{W_\text{hbm}}, \qquad \beta = \frac{\text{bytes per weight}}{\text{bytes per activation}}
+B_\text{crit} \approx \frac{C_\text{math}}{W_\text{hbm}} \cdot \frac{\text{bytes per weight}}{2}
 \tag{1.4}
 $$
 
-<Gloss>Halving the bytes per weight halves the batch needed to keep the matrix units busy, as long as the arithmetic rate stays the same.</Gloss>
+<Gloss>Each weight byte read supports 2 / (bytes per weight) FLOPs per token, so intensity is about 2B divided by bytes per weight. C is the peak for the precision the math runs in. Halving bytes per weight halves the batch needed; doubling the math rate doubles it back.</Gloss>
+
+The Scaling Book writes this as $\beta \cdot C/W_\text{hbm}$, with $\beta$ the ratio of weight bits to activation bits and $C$ the BF16 peak <Cite id="SB7" at="#linear-operations-what-bottlenecks-us" />. For bf16 math the two forms agree. Formula 1.4 also covers low-precision math directly.
 
 On v5e, int8 weights with bf16 math bring the compute-bound batch from 240 to 120 <Cite id="SB1" at="#a-few-problems-to-work" s="Q2" />. On Ironwood the example shape goes from 329 to 164.
 

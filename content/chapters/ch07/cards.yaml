@@ -1,0 +1,81 @@
+# Chapter 7 flashcards.
+- id: ch07-c-phases
+  front: Prefill against decode, in one line each?
+  back: "Prefill: whole prompt in one pass, compute-bound, sets TTFT. Decode: one token per sequence per step, reads all weights and caches, memory-bound, sets time per token."
+  source: SB7
+- id: ch07-c-bcrit
+  front: Compute-bound decode batch, general form?
+  back: "$B_\\text{crit} \\approx (C_\\text{math}/W_\\text{hbm}) \\cdot (\\text{bytes per weight})/2$, with C the peak for the math precision."
+  source: SB7, derived
+- id: ch07-c-bcrit-table
+  front: Decode B_crit on Ironwood for bf16, fp8 weights with bf16 math, and fp8 throughout?
+  back: "313, 156 and 313. Faster fp8 math cancels the halved weight bytes."
+  source: derived
+- id: ch07-c-8i
+  front: TPU 8i decode B_crit (provisional figures)?
+  back: "128 in bf16, 64 with fp8 weights and bf16 math, 512 with fp8 throughout. Its fp8 rate is 8× its bf16 rate."
+  source: J-hw, derived
+- id: ch07-c-step
+  front: General decode step time?
+  back: "$T = B \\cdot \\text{KV}/W + \\max(2B \\cdot \\text{params}/C, \\text{param bytes}/W)$. The attention term is always bandwidth; the MLP term is weights or FLOPs."
+  source: SB7
+- id: ch07-c-floor
+  front: The absolute floor on a decode step?
+  back: "Reading every weight once: param bytes over total HBM bandwidth. 18.4 GB of int8 weights on a v5e 4×4: 1.4 ms."
+  source: SB7
+- id: ch07-c-30b
+  front: 30B int8 model on a v5e 4×4, 8k context, batch 4 and 256?
+  back: "About 2.5 ms and 21 ms. On 4 Ironwood chips: 1.1 ms and 8.8 ms."
+  source: SB7, derived
+- id: ch07-c-70b-iw
+  front: LLaMA-3-70B on 8 Ironwood chips, 32k context, batch 64, bf16?
+  back: "Step 14.0 ms: KV 11.6, weights 2.4, FLOPs 0.5. 570 tokens/s per chip. With fp8 weights and KV: 7.0 ms, 1,140 tokens/s per chip."
+  source: derived
+- id: ch07-c-kv-limit
+  front: Why can't long-context decode reach B_crit?
+  back: "KV caches fill HBM before the batch gets there, and each added sequence adds its whole cache to every step, so throughput saturates."
+  source: SB7
+- id: ch07-c-prefill
+  front: Prefill time and the book's batching advice?
+  back: "About 2 · params · T / (N · C · MFU). 8k tokens of 70B: 0.91 s on 16 v5e, 157 ms on 8 Ironwood at 40%. Prefill at batch 1 unless prompts are short."
+  source: SB8, SB7
+- id: ch07-c-disagg
+  front: Why disaggregate prefill and decode?
+  back: "Different bottlenecks (compute against bandwidth and capacity), different sharding, and long prefills otherwise stall decode. The cost is moving KV caches between servers."
+  source: SB7
+- id: ch07-c-ratio
+  front: Book's prefill-to-decode server ratio example?
+  back: "8k prompts at 0.91 s; decode batch 32, 19 ms per step, 512 tokens: about 3 prefill servers per decode server."
+  source: SB8 Q12
+- id: ch07-c-no-fsdp
+  front: Three training strategies that do not apply to decode?
+  back: "FSDP (moves weights over ICI every step), in-server data parallelism (use replicas), sequence parallelism (one token per sequence)."
+  source: SB7
+- id: ch07-c-mp
+  front: How far can decode be model-parallel?
+  back: "Until $Y > F/(B\\beta_\\text{ici})$, with $\\beta_\\text{ici} = W_\\text{hbm}/W_\\text{ici}$: about 8 on v5e, about 37 on Ironwood. LLaMA-3-70B at batch 32 on Ironwood: about 24 ways."
+  source: SB7, derived
+- id: ch07-c-kv-shard
+  front: How is the KV cache sharded for decode?
+  back: "By KV heads first (at most K ways), then by batch, which costs two AllToAlls per attention layer."
+  source: SB7
+- id: ch07-c-latency
+  front: When are decode TP collectives latency-bound?
+  back: "8-way on v5e below about 360 kB; on Ironwood below about 800 kB. Batch 16 × 8,192 in int8 is 131 kB: latency-bound."
+  source: SB7, derived
+- id: ch07-c-dtypes
+  front: Native fp8 matrix math by TPU generation?
+  back: "Ironwood (2× BF16) and TPU 8. v5p and v6e list fp8 at the BF16 rate; v5e and v6e have int8."
+  source: D-arch, J-hw
+- id: ch07-c-qwix
+  front: How does Qwix quantize?
+  back: "Intercepts dot_general, einsum, conv and ragged_dot at run time; regex rules set weight and activation dtypes. Disabled inside Pallas (use qwix.pallas)."
+  source: R-qwix
+- id: ch07-c-spec
+  front: Why does speculative decoding work?
+  back: "A decode step is memory-bound, so scoring k drafted tokens in one pass costs about the same as one: idle FLOPs. Greedy output is unchanged; best lookahead was 3–4 in the book's example."
+  source: SB7
+- id: ch07-c-moe
+  front: MoE in decode?
+  back: "Needs E/k × the batch to be compute-bound (1,920 for the book's E=16, k=2 model at bf16 on v5e), has 12× the weight bytes, and pays two latency-bound AllToAlls per layer."
+  source: SB7 Q5

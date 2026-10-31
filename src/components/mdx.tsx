@@ -12,6 +12,7 @@ import { ModelCalc } from '../interactives/ModelCalc';
 import { ShardingSandbox } from '../interactives/ShardingSandbox';
 import { CollectiveViz } from '../interactives/CollectiveViz';
 import { MeshPlanner } from '../interactives/MeshPlanner';
+import { BreakevenCalc } from '../interactives/BreakevenCalc';
 
 type Src = { id: string; title: string; url: string; section: string };
 const SRC = sources as Record<string, Src>;
@@ -193,4 +194,5 @@ export const mdxComponents = {
   ShardingSandbox,
   CollectiveViz,
   MeshPlanner,
+  BreakevenCalc,
 };

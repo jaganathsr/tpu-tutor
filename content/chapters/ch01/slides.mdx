@@ -98,7 +98,7 @@ $$
 <Slide title="Precision moves the ridge">
 
 $$
-B_\text{crit} = \beta \cdot \frac{C}{W_\text{hbm}}, \qquad \beta = \frac{\text{bytes per weight}}{\text{bytes per activation}}
+B_\text{crit} \approx \frac{C_\text{math}}{W_\text{hbm}} \cdot \frac{\text{bytes per weight}}{2}
 $$
 
 - int8/fp8 weights, bf16 math: $B_\text{crit}$ halves. v5e 240 to 120; Ironwood example 329 to 164.

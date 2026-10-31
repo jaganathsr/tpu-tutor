@@ -36,9 +36,9 @@ if __name__ == "__main__":
         ai = (S * G) / (S + G)
         print(f"Decode attention intensity, G={G}, S={S}: {ai:.2f} FLOP/B")
 
-    # MoE critical batch: B > (C/W) * beta * E/k.
+    # MoE critical batch: B > (E/k) * (C_math / W) * bytes_per_weight / 2.
     for chip, beta, label in (("v5e", 0.5, "int8 weights, bf16 math"), ("7x", 0.5, "fp8 weights, bf16 math"),
-                              ("7x", 1.0, "fp8 weights, fp8 math")):
+                              ("7x", 0.5, "fp8 weights, fp8 math")):
         c = CHIPS[chip]
         C = c.flops_fp8 if "fp8 math" in label else c.flops_bf16
         ridge = C / c.hbm_bw

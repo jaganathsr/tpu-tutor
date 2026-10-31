@@ -1,0 +1,86 @@
+<Slide title="Two workloads in one server">
+
+<Cols>
+<div>
+
+**Prefill**
+
+- Whole prompt in one pass; batch is T tokens.
+- Compute-bound. Sets time to first token.
+- 8k tokens of 70B: 0.91 s on 16 v5e, 157 ms on 8 Ironwood.
+
+</div>
+<div>
+
+**Decode**
+
+- One token per sequence per step.
+- Reads every weight and every cache.
+- Memory-bound. Sets time per token.
+
+</div>
+</Cols>
+
+</Slide>
+
+<Slide title="Decode step time">
+
+$$
+T_\text{step} = \frac{B \cdot \text{KV}}{W_\text{hbm}} + \max\left(\frac{2B \cdot \text{params}}{C}, \frac{\text{param bytes}}{W_\text{hbm}}\right)
+$$
+
+<Gloss>Attention always reads every cache; the MLP is weights or FLOPs, whichever is longer.</Gloss>
+
+$$
+B_\text{crit} \approx \frac{C_\text{math}}{W_\text{hbm}} \cdot \frac{\text{bytes per weight}}{2}
+$$
+
+| | bf16 | fp8 weights, bf16 math | fp8 throughout |
+|---|---|---|---|
+| Ironwood | 313 | 156 | 313 |
+| 8i (provisional) | 128 | 64 | 512 |
+
+</Slide>
+
+<Slide title="LLaMA-3-70B, 8 Ironwood chips, 32k context">
+
+| Weights, KV | Batch | Step | KV / weights / FLOPs | tok/s/chip |
+|---|---|---|---|---|
+| bf16 | 64 | 14.0 ms | 11.6 / 2.4 / 0.5 | 570 |
+| bf16 | 128 | 25.7 ms | 23.3 / 2.4 / 1.0 | 623 |
+| fp8 | 64 | 7.0 ms | 5.8 / 1.2 / 0.5 | 1,140 |
+
+KV-bound at every batch. Fewer bytes doubles throughput; more FLOPs does nothing.
+
+</Slide>
+
+<Slide title="Sharding decode">
+
+- **No FSDP:** weights over ICI every step, an order-of-magnitude regression.
+- **No in-server DP, no sequence parallelism:** use replicas.
+- **Model parallelism, far:** ICI binds only when $Y > F/(B\beta_\text{ici})$; $\beta_\text{ici}$ ≈ 8 on v5e, 37 on Ironwood.
+- **KV cache:** by heads (at most K ways), then by batch with two AllToAlls per layer.
+- **Collectives are latency-bound:** 8-way below 360 kB (v5e), 800 kB (Ironwood).
+
+</Slide>
+
+<Slide title="Disaggregated serving">
+
+- Prefill servers: compute, little memory, batch 1.
+- Decode servers: bandwidth and HBM for many caches, heavy model parallelism.
+- Cost: shipping KV caches between them.
+
+<Big n="3 : 1">prefill to decode servers for 8k prompts and 512-token answers (book example)</Big>
+
+</Slide>
+
+<Slide title="Quantization and other levers">
+
+- **Weights to 8 bits:** halves the weight read and capacity; B_crit halves if math stays bf16.
+- **KV to fp8:** halves the dominant long-context term.
+- **Native fp8 math:** Ironwood and TPU 8; v5p and v6e list fp8 at the BF16 rate.
+- **Qwix:** intercepts dot_general, einsum and ragged_dot; regex rules per module.
+- **Speculative decoding:** k tokens scored for the cost of one in a memory-bound step.
+- **MoE:** E/k × the batch, latency-bound AllToAlls.
+
+</Slide>

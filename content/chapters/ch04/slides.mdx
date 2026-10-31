@@ -80,7 +80,7 @@ Decode attention is memory-bound at every batch size: each sequence reads its ow
 <Slide title="MoE: memory follows E, compute follows k">
 
 $$
-B > \frac{E}{k} \cdot \beta \cdot \frac{C}{W_\text{hbm}}
+B > \frac{E}{k} \cdot \frac{C_\text{math}}{W_\text{hbm}} \cdot \frac{\text{bytes per weight}}{2}
 $$
 
 <Gloss>Each expert sees only its share of tokens, so the batch must be E/k times larger.</Gloss>
@@ -89,7 +89,7 @@ $$
 |---|---|---|
 | DeepSeek-V3 shape, v5e, int8 weights | 32 | 3,840 |
 | Same, Ironwood, fp8 weights, bf16 math | 32 | about 5,000 |
-| Same, Ironwood, fp8 math too | 32 | about 20,000 |
+| Same, Ironwood, fp8 math too | 32 | about 10,000 |
 
 </Slide>
 
