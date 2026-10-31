@@ -8,6 +8,7 @@ import sources from '../generated/sources.json';
 import { Quiz } from '../components/Quiz';
 import { Flashcards } from '../components/Flashcards';
 import { TeachBack } from '../components/TeachBack';
+import { LoadFailed } from '../components/LoadFailed';
 
 const SRC = sources as Record<string, { title: string }>;
 type Tab = 'read' | 'quiz' | 'cards' | 'teach';
@@ -67,10 +68,12 @@ export function ChapterPage({ id, tab }: { id: string; tab: Tab }) {
   const s = useStore();
   const ch = chapter(id);
   const [, setLoaded] = useState(0);
+  const [failed, setFailed] = useState(false);
   const Content = chapterContent(id);
   // Chapter MDX is a separate chunk; load it when navigating here in-app.
   useEffect(() => {
-    if (!chapterContent(id)) loadChapter(id).then(() => setLoaded((n) => n + 1));
+    setFailed(false);
+    if (!chapterContent(id)) loadChapter(id).then(() => setLoaded((n) => n + 1), () => setFailed(true));
   }, [id]);
   const mainRef = useRef<HTMLDivElement>(null);
   const [root, setRoot] = useState<HTMLElement | null>(null);
@@ -129,7 +132,7 @@ export function ChapterPage({ id, tab }: { id: string; tab: Tab }) {
           {!ch.written ? (
             <p class="empty">This chapter is not written yet. It is planned in research/syllabus.md.</p>
           ) : tab === 'read' && !Content ? (
-            <p class="ui muted">Loading the chapter.</p>
+            failed ? <LoadFailed what="chapter" /> : <p class="ui muted">Loading the chapter.</p>
           ) : tab === 'read' && Content ? (
             <>
               <article class="prose">

@@ -86,14 +86,30 @@ export const chapters: ChapterMeta[] = (course.chapters as any[]).map((c) => {
   };
 });
 
+// Every deploy renames the lazily loaded chunks, so a page opened before a deploy
+// asks for files that no longer exist. Reload once to pick up the new build; if
+// that already happened in the last minute, let the caller show an error.
+const RELOAD_KEY = 'tpudd:chunk-reload';
+function importOrReload<T>(load: () => Promise<T>): Promise<T> {
+  return load().catch((err) => {
+    if (typeof location === 'undefined') throw err;
+    let last = 0;
+    try { last = Number(sessionStorage.getItem(RELOAD_KEY)) || 0; } catch { /* storage blocked */ }
+    if (Date.now() - last < 60_000) throw err;
+    try { sessionStorage.setItem(RELOAD_KEY, String(Date.now())); } catch { /* storage blocked */ }
+    location.reload();
+    return new Promise<T>(() => {});
+  });
+}
+
 export async function loadChapter(id: string) {
-  if (!loadedMdx[id] && loadersByDir[id]) loadedMdx[id] = await loadersByDir[id]();
+  if (!loadedMdx[id] && loadersByDir[id]) loadedMdx[id] = await importOrReload(loadersByDir[id]);
   return loadedMdx[id]?.default;
 }
 
 export async function loadSlides(ids: string[]) {
   await Promise.all(ids.map(async (id) => {
-    if (!loadedSlides[id] && slideLoadersByDir[id]) loadedSlides[id] = await slideLoadersByDir[id]();
+    if (!loadedSlides[id] && slideLoadersByDir[id]) loadedSlides[id] = await importOrReload(slideLoadersByDir[id]);
   }));
 }
 
