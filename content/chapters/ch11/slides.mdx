@@ -1,0 +1,81 @@
+<Slide title="Three bets">
+
+| | Cores per chip | Latency hiding | On-chip memory | Compilation |
+|---|---|---|---|---|
+| GPU (H100) | 132 SMs | hardware warps | 30 MB SMEM + 50 MB L2 cache | eager kernels, graphs |
+| TPU (Ironwood) | 2 TensorCores | compiler schedule | 128 MiB VMEM, no cache | whole-program XLA |
+| Trainium2 | 8 NeuronCores | concurrent engines | 224 MiB SBUF + PSUM | neuronx-cc |
+
+</Slide>
+
+<Slide title="Compute and memory">
+
+<ChipTable chips="7x 8t 8i H100 GB200 Rubin Trn3" cols="bf16 fp8 hbm hbm_bw ai" />
+
+Flagship ridge points cluster near 300; inference designs push it down.
+
+</Slide>
+
+<Slide title="Switch against torus">
+
+<Cols>
+<div>
+
+**Switch (NVLink, NeuronSwitch)**
+
+- One hop to every peer in 8, 72 or 144.
+- In-switch reduction (SHARP).
+- Cheap all-to-all and small collectives.
+- Beyond the domain: scale-out at about 50 GB/s per GPU (H100).
+
+</div>
+<div>
+
+**Torus (ICI)**
+
+- 6 neighbours, multiple hops.
+- No in-network reduction.
+- Per-chip bandwidth constant to about 9,000 chips.
+- Bisection grows as $N^{2/3}$.
+
+</div>
+</Cols>
+
+</Slide>
+
+<Slide title="1 GB collectives, idealized">
+
+| | 8 | 64 | 512 chips |
+|---|---|---|---|
+| AllToAll, Ironwood | 1.25 ms | 0.078 ms | 0.020 ms |
+| AllToAll, H100 | 0.28 ms | 0.31 ms | 0.039 ms |
+| AllToAll, GB200 NVL72 | 0.14 ms | 0.017 ms | 0.039 ms |
+| AllGather, Ironwood | 5.0 ms | 1.7 ms | 1.7 ms |
+| AllGather, GB200 NVL72 | 1.0 ms | 1.1 ms | 1.1 ms |
+
+The switch wins inside its domain; the torus wins past it. Practical GPU reach is lower than these figures.
+
+</Slide>
+
+<Slide title="Where each wins">
+
+| Workload | Advantage |
+|---|---|
+| Large dense pretraining | TPU pod (v5p-class α); GPU close |
+| MoE training | NVL72 inside 72; torus at multi-rack scale |
+| Low-latency decode | NVL72 one hop; TPU 8i at most 7 hops |
+| Long-context decode | most HBM bandwidth and capacity per dollar |
+| Recommendation (embeddings) | TPU SparseCore |
+| Changing ops, dynamic shapes | GPU |
+
+</Slide>
+
+<Slide title="Converging, not the same">
+
+- GPU Tensor Cores grow (warp → SM → 2 SMs) and gain Tensor Memory: toward the MXU and VMEM.
+- Trainium moved from torus to switch, and toward NVLink Fusion.
+- TPU split: 8t torus for training, 8i Boardfly and 384 MB SRAM for inference.
+- PyTorch moved to native backends on TPU and Trainium.
+- Unchanged: 100+ SMs and eager execution against 2 cores and whole-program compilation.
+
+</Slide>

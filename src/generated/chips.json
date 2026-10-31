@@ -19,7 +19,12 @@
    "ici": "D-v5e 400 GB/s bidi over 4 ports",
    "vmem": "J-hw"
   },
-  "provisional": []
+  "provisional": [],
+  "net": {
+   "kind": "torus",
+   "axes": 2,
+   "domain": 256
+  }
  },
  "v5p": {
   "name": "TPU v5p",
@@ -41,7 +46,12 @@
    "ici": "D-v5p 1200 GB/s bidi / 6",
    "vmem": "J-hw"
   },
-  "provisional": []
+  "provisional": [],
+  "net": {
+   "kind": "torus",
+   "axes": 3,
+   "domain": 8960
+  }
  },
  "v6e": {
   "name": "TPU v6e",
@@ -63,7 +73,12 @@
    "ici": "D-v6e 800 GB/s bidi / 4",
    "vmem": "J-hw"
   },
-  "provisional": []
+  "provisional": [],
+  "net": {
+   "kind": "torus",
+   "axes": 2,
+   "domain": 256
+  }
  },
  "7x": {
   "name": "TPU7x Ironwood",
@@ -85,7 +100,12 @@
    "ici": "D-7x 6 x 200 GB/s bidi",
    "vmem": "J-hw, SB2"
   },
-  "provisional": []
+  "provisional": [],
+  "net": {
+   "kind": "torus",
+   "axes": 3,
+   "domain": 9216
+  }
  },
  "8t": {
   "name": "TPU 8t",
@@ -114,7 +134,12 @@
    "flops_int8",
    "flops_int4",
    "ici_link_bidi"
-  ]
+  ],
+  "net": {
+   "kind": "torus",
+   "axes": 3,
+   "domain": 9600
+  }
  },
  "8i": {
   "name": "TPU 8i",
@@ -139,7 +164,8 @@
   "provisional": [
    "flops_bf16",
    "flops_fp8"
-  ]
+  ],
+  "net": {}
  },
  "H100": {
   "name": "H100 SXM",
@@ -156,12 +182,20 @@
   "vmem_bytes": null,
   "tensorcores": null,
   "src": {
-   "all": "N-h100 (dense = sparse/2)"
+   "all": "N-h100 (dense = sparse/2)",
+   "net": "SB12: NVLink 450 GB/s per direction, 400 GB/s node egress"
   },
-  "provisional": []
+  "provisional": [],
+  "net": {
+   "kind": "switch",
+   "link": 450000000000.0,
+   "domain": 8,
+   "egress": 400000000000.0,
+   "node": 8
+  }
  },
  "B200": {
-  "name": "B200",
+  "name": "B200 (HGX)",
   "flops": {
    "bf16": 2250000000000000.0,
    "fp8": 4500000000000000.0,
@@ -175,8 +209,124 @@
   "vmem_bytes": null,
   "tensorcores": null,
   "src": {
-   "all": "N-b200 (derived per GPU)"
+   "all": "N-b200 (derived per GPU)",
+   "net": "SB12 Appendix A"
   },
-  "provisional": []
+  "provisional": [],
+  "net": {
+   "kind": "switch",
+   "link": 900000000000.0,
+   "domain": 8,
+   "egress": 400000000000.0,
+   "node": 8
+  }
+ },
+ "GB200": {
+  "name": "GB200 (NVL72)",
+  "flops": {
+   "bf16": 2500000000000000.0,
+   "fp8": 5000000000000000.0,
+   "int8": null,
+   "fp4": null,
+   "int4": null
+  },
+  "hbm_bw": 8000000000000.0,
+  "hbm_bytes": 186000000000.0,
+  "W_axis": null,
+  "vmem_bytes": null,
+  "tensorcores": null,
+  "src": {
+   "all": "N-gb200 (derived per GPU from rack totals)",
+   "net": "SB12 Appendix A: 3.6 TB/s node egress"
+  },
+  "provisional": [],
+  "net": {
+   "kind": "switch",
+   "link": 900000000000.0,
+   "domain": 72,
+   "egress": 3600000000000.0,
+   "node": 72
+  }
+ },
+ "Rubin": {
+  "name": "Rubin (VR NVL72)",
+  "flops": {
+   "bf16": 4000000000000000.0,
+   "fp8": 1.75e+16,
+   "int8": null,
+   "fp4": null,
+   "int4": null
+  },
+  "hbm_bw": 19200000000000.0,
+  "hbm_bytes": 288000000000.0,
+  "W_axis": null,
+  "vmem_bytes": null,
+  "tensorcores": null,
+  "src": {
+   "all": "N-rubin product page (vendor claims; CES coverage differs)",
+   "net": "3 TB/s bidirectional per GPU"
+  },
+  "provisional": [
+   "flops_fp8"
+  ],
+  "net": {
+   "kind": "switch",
+   "link": 1500000000000.0,
+   "domain": 72
+  }
+ },
+ "Trn2": {
+  "name": "Trainium2",
+  "flops": {
+   "bf16": 667000000000000.0,
+   "fp8": 1299000000000000.0,
+   "int8": null,
+   "fp4": null,
+   "int4": null
+  },
+  "hbm_bw": 2900000000000.0,
+  "hbm_bytes": 103079215104,
+  "W_axis": 320000000000.0,
+  "vmem_bytes": null,
+  "tensorcores": null,
+  "src": {
+   "all": "A-trn2, A-trn2-sys"
+  },
+  "provisional": [
+   "ici_link_bidi"
+  ],
+  "net": {
+   "kind": "torus",
+   "axes": 2,
+   "domain": 16,
+   "w_axis_note": "NeuronLink-v3 1.28 TB/s per chip, direction unstated"
+  }
+ },
+ "Trn3": {
+  "name": "Trainium3",
+  "flops": {
+   "bf16": 671000000000000.0,
+   "fp8": 2517000000000000.0,
+   "int8": null,
+   "fp4": null,
+   "int4": null
+  },
+  "hbm_bw": 4900000000000.0,
+  "hbm_bytes": 154618822656,
+  "W_axis": null,
+  "vmem_bytes": null,
+  "tensorcores": null,
+  "src": {
+   "all": "A-trn3 (FP8 is MXFP8)",
+   "net": "NeuronLink-v4 2.0-2.56 TB/s per chip; per-direction split assumed"
+  },
+  "provisional": [
+   "net"
+  ],
+  "net": {
+   "kind": "switch",
+   "link": 1000000000000.0,
+   "domain": 144
+  }
  }
 }

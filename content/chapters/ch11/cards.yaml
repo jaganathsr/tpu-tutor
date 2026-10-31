@@ -1,0 +1,81 @@
+# Chapter 11 flashcards.
+- id: ch11-c-bets
+  front: The three design bets in one line each?
+  back: "GPU: many independent SMs, hardware latency hiding, caches, eager. TPU: few single-threaded cores, systolic MXUs, compiler-managed VMEM, whole-program XLA. Trainium: 8 systolic NeuronCores with SBUF/PSUM, in between."
+  source: SB12, A-trn2-nki
+- id: ch11-c-verdict
+  front: The Scaling Book's verdict on GPU against TPU at chip level?
+  back: "GPUs 'just work' more often and lean less on the compiler, but are harder to reason about and bring to roofline; TPUs 'can often get closer to peak roofline performance with less work'."
+  source: SB12
+- id: ch11-c-ridges
+  front: BF16 ridge points this generation?
+  back: "Ironwood 313, GB200 312, H100 295, B200 281; inference-leaning: TPU 8i 128 (provisional), Trainium3 137, Rubin 208."
+  source: specs.py
+- id: ch11-c-hbm
+  front: HBM per chip, latest parts?
+  back: "Rubin and TPU 8i 288 GB; Ironwood 192 GiB; B200/GB200 about 180–186 GB; Trainium3 144 GiB; H100 80 GB."
+  source: specs.py
+- id: ch11-c-sram
+  front: Programmer-managed on-chip SRAM per chip?
+  back: "Trainium2 224 MiB SBUF; Ironwood 128 MiB VMEM; TPU 8i 384 MB; H100 about 30 MB shared memory (plus 50 MB hardware L2)."
+  source: A-trn2, J-hw, N-tune
+- id: ch11-c-domains
+  front: Scale-up domain sizes?
+  back: "H100 HGX 8; GB200 NVL72 72; Trainium3 144; TPU 8i 1,152; Ironwood 9,216; TPU 8t 9,600."
+  source: SB12, A-trn3-sys, G-8dd
+- id: ch11-c-switch
+  front: What does a switch make cheap that a torus does not?
+  back: "All-to-all traffic and small latency-bound collectives: one hop, plus in-switch SHARP reduction. AllToAll in an NVLink node costs about half of a TPU ring's."
+  source: SB12
+- id: ch11-c-torus
+  front: What does a torus make cheap that a switch does not?
+  back: "Scale: links grow with chips, so per-chip bandwidth holds to about 9,000 chips with no switch silicon; bisection grows as N^(2/3) in 3D."
+  source: SB2, P-v4
+- id: ch11-c-a2a-64
+  front: 1 GB AllToAll over 64 chips, idealized?
+  back: "GB200 NVL72 about 0.017 ms (one hop); Ironwood 4×4×4 about 0.078 ms; H100 across 8 nodes about 0.31 ms."
+  source: derived
+- id: ch11-c-a2a-512
+  front: 1 GB AllToAll over 512 chips, idealized?
+  back: "Ironwood 8×8×8 about 0.020 ms; GB200 across 7 racks about 0.039 ms. Past one rack, the torus wins."
+  source: derived
+- id: ch11-c-reach
+  front: Practical collective reach, GPU against TPU?
+  back: "8×H100 AllReduce about 370 of 450 GB/s, only near 10 GB messages; multi-node AllToAll may not reach 50%. v5e AllGather about 95% of peak at about 10 MB."
+  source: SB12, SB3
+- id: ch11-c-alpha
+  front: Data-parallel tokens per chip for compute-bound sync?
+  back: "v5p 850 (3 axes); Ironwood 3,845; H100 2,200 in node, 2,475 across; B200 across nodes 5,625."
+  source: SB12, derived
+- id: ch11-c-kernels
+  front: Kernel languages compared?
+  back: "CUDA, CUTLASS, Triton: threads, blocks, caches. Pallas: grid and BlockSpecs, compiler-pipelined DMA, Mosaic. NKI: explicit DMA to SBUF and explicit engine choice."
+  source: A-nki
+- id: ch11-c-collimpl
+  front: Where do collectives run on each platform?
+  back: "NVIDIA: NCCL kernels on SMs (compete with compute). TPU: HLO ops scheduled by XLA, moved by DMA engines. Trainium: dedicated collective cores."
+  source: A-trn2
+- id: ch11-c-partition
+  front: How is one accelerator partitioned on each platform?
+  back: "GPU: MIG splits a GPU. TPU: slices of whole chips. Trainium: LNC merges NeuronCores into larger logical cores."
+  source: A-trn3
+- id: ch11-c-moe
+  front: Best interconnect for MoE training with many experts?
+  back: "Inside 72 GPUs, an NVL72 switch (one-hop AllToAll). At multi-rack scale, a 3D torus's growing bisection. Trainium3's 144-chip switch targets the same traffic."
+  source: derived
+- id: ch11-c-research
+  front: Workload where GPUs have a structural edge?
+  back: "Research code with changing ops and dynamic shapes: eager execution and caches tolerate irregularity; XLA compiles exact shapes."
+  source: SB12
+- id: ch11-c-converge-gpu
+  front: Evidence GPUs are moving toward TPU design?
+  back: "Tensor Cores fed by a warp (Ampere), an SM (Hopper), two SMs (Blackwell); Blackwell's 256 KB Tensor Memory per SM for accumulators; TMA bulk copies."
+  source: SB12
+- id: ch11-c-converge-other
+  front: Other 2025–26 convergence?
+  back: "Trainium3 moved to a switch (and Trainium4 to NVLink Fusion); TPU split into 8t and 8i; both TPU and Trainium moved PyTorch to native PrivateUse1 backends."
+  source: A-trn3-sys, A-trn4, G-8dd, A-torch
+- id: ch11-c-price
+  front: FLOPs per dollar, Google Cloud, Feb 2025 (book)?
+  back: "v5e 5.8e17; v5p 3.9e17; H100 3.3e17."
+  source: SB8

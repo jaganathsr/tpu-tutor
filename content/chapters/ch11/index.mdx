@@ -1,0 +1,182 @@
+---
+objectives:
+  - I can state the design bet behind GPUs, TPUs and Trainium, and what each gives up.
+  - I can compare current chips quantitatively — compute per precision, HBM capacity and bandwidth, ridge point and on-chip memory — for Ironwood, TPU 8t and 8i, H100, B200, GB200, Rubin, Trainium2 and Trainium3.
+  - I can compare scale-up and scale-out designs, and derive their consequences for AllGather and AllToAll and for training thresholds.
+  - I can compare the programming models — kernels, compilation, PyTorch paths and partitioning.
+  - I can say, for a given workload, which design has the structural advantage, and why.
+  - I can name the 2025–26 convergence trends and the evidence for each.
+teachback:
+  - In five minutes, explain to a room of CUDA engineers what a TPU gives up relative to a GPU, what it gets in return, and how to tell which side of that trade their workload is on.
+  - Why can a TPU pod reach about 9,000 chips without packet switches while NVLink stops at 72, and what does each topology make cheap or expensive?
+  - Blackwell added Tensor Memory and single-thread MMA issue. Argue whether GPUs are converging on TPU design, with the evidence for and against.
+  - For an MoE model with 256 experts, which interconnect would you want for training, and why?
+sources:
+  - { id: SB12, anchor: "#gpus-vs-tpus-at-the-chip-level", label: "Chip level" }
+  - { id: SB12, anchor: "#networking", label: "Networking" }
+  - { id: SB12, anchor: "#how-do-collectives-work-on-gpus", label: "Collectives" }
+  - { id: SB12, anchor: "#rooflines-for-llm-scaling-on-gpus", label: "LLM rooflines" }
+  - { id: SB12, anchor: "#appendix-a-how-does-this-change-with-gb200", label: "GB200" }
+  - { id: SB2, anchor: "#tpu-networking", label: "TPU networking" }
+  - { id: SB3, anchor: "#a-deeper-dive-into-tpu-communication-primitives", label: "TPU collective reach" }
+  - { id: N-wp, label: "H100 in depth" }
+  - { id: N-tune, label: "§1.4" }
+  - { id: N-gb200 }
+  - { id: N-rubin }
+  - { id: A-trn2 }
+  - { id: A-trn2-nki }
+  - { id: A-trn2-sys }
+  - { id: A-trn3 }
+  - { id: A-trn3-sys }
+  - { id: A-trn4 }
+  - { id: A-torch }
+  - { id: G-8dd }
+  - { id: J-hw }
+  - { id: T-pt, label: "A TPU primer" }
+  - { id: N-graphs }
+  - { id: SB8, anchor: "#whats-the-llama-serving-story", label: "FLOPs per dollar" }
+---
+
+This chapter puts the previous ten side by side. Each section takes one axis — compute, memory, network, software and workload fit — and lines up NVIDIA, Google and AWS on it, with numbers. Earlier chapters' callouts made these comparisons locally; here they form one argument.
+
+## Three design bets
+
+**GPU: many independent cores, hardware-managed latency hiding.** An H100 has 132 SMs, each with 4 Tensor Cores, a large register file and up to 64 resident warps. A hardware L2 cache sits behind them. Independent kernels run on different SMs, and the warp scheduler hides memory latency by switching threads <Cite id="N-wp" /> <Cite id="N-tune" s="§1.4" />. The Scaling Book's summary: GPUs "just work" on new tasks more often and lean far less on the compiler. The price is that their performance is harder to reason about and harder to bring to the roofline <Cite id="SB12" at="#gpus-vs-tpus-at-the-chip-level" />.
+
+**TPU: a few large cores, compiler-managed everything.** An Ironwood chip has two TensorCores, each a single instruction stream driving two 256×256 systolic arrays. 64 MiB of VMEM per core is filled by DMAs scheduled at compile time, and XLA compiles the whole step. The Scaling Book's summary: TPUs "can often get closer to peak roofline performance with less work", and cost less to build. The price is the compiler: static shapes, whole-program compilation, and poor tolerance for irregular access patterns.
+
+**Trainium: in between.** A Trainium2 chip has 8 NeuronCores. Each has a 128×128 systolic tensor engine plus separate vector, scalar and general-purpose SIMD engines running concurrently, a 28 MiB SBUF scratchpad in 128 partitions, and a dedicated 2 MiB accumulation buffer, PSUM <Cite id="A-trn2-nki" />. It is systolic and scratchpad-based like a TPU, and multi-core like a GPU, though with 8 cores instead of 132.
+
+Google's own framing, in the PyTorch blog, is the same: "a TPU TensorCore is fundamentally a single-threaded execution processor … On the contrary, a GPU includes many identical compute cores" <Cite id="T-pt" />.
+
+## Compute and memory, per chip
+
+<Wide>
+
+<ChipTable chips="7x 8t 8i H100 B200 GB200 Rubin Trn2 Trn3" cols="bf16 fp8 hbm hbm_bw ai" />
+
+</Wide>
+
+Sources are in `scripts/specs.py`. NVIDIA per-GPU figures are dense, halved from sparse, and per-GPU values for rack products are derived from rack totals <Cite id="N-gb200" /> <Cite id="N-rubin" />. Trainium3's FP8 is MXFP8 <Cite id="A-trn3" />. TPU 8 BF16 and FP8 figures are provisional <Cite id="J-hw" />. Rubin's figures are NVIDIA's product-page claims; CES coverage quoted higher memory bandwidth.
+
+What the table says:
+
+- **Ridge points cluster around 300** for this generation's flagships in BF16: Ironwood 313, GB200 312, H100 295, B200 281. The batch-size intuitions of Chapters 1 and 7 transfer directly between them.
+- **Inference-oriented designs push the ridge down.** TPU 8i (128, provisional), Trainium3 (137) and Rubin (208) spend more on bandwidth relative to BF16 compute, and put their FLOPs into low precision.
+- **HBM capacity per chip:** Rubin and 8i at 288 GB, Ironwood at 192 GiB, B200 and GB200 at about 180–186 GB, Trainium3 at 144 GiB.
+
+| On-chip structure | H100 | Ironwood (per chip) | Trainium2 (per chip) |
+|---|---|---|---|
+| Independent cores | 132 SMs | 2 TensorCores | 8 NeuronCores |
+| Matrix units | 528 Tensor Cores | 4 MXUs, 256×256 | 8 tensor engines, 128×128 |
+| Programmer-managed SRAM | about 30 MB shared memory (228 KB per SM) | 128 MiB VMEM | 224 MiB SBUF |
+| Hardware cache | 50 MB L2 | none | none |
+| Registers | about 32 MB | about 512 KB of vector registers | not compared |
+
+Sources: <Cite id="N-tune" s="§1.4" />, <Cite id="SB12" at="#gpus-vs-tpus-at-the-chip-level" />, <Cite id="J-hw" />, <Cite id="A-trn2" />.
+
+## Network: switch against torus
+
+| | Scale-up domain | Topology | Per-chip bandwidth | In-network reduction |
+|---|---|---|---|---|
+| H100 HGX | 8 GPUs | NVSwitch, 1 hop | 450 GB/s each way | NVLink SHARP |
+| GB200 NVL72 | 72 GPUs | NVSwitch, 1 hop | 900 GB/s each way | NVLink SHARP |
+| Ironwood | 9,216 chips | 3D torus of OCS-joined cubes | 600 GB/s each way over 6 links | none |
+| TPU 8t | 9,600 chips | 3D torus | 2× Ironwood | none |
+| TPU 8i | 1,152 chips | Boardfly, ≤ 7 hops | 2.4 TB/s total | Collectives Acceleration Engine on chip |
+| Trainium2 | 64 chips | 4×4 torus per instance, rings across 4 | 1.28 TB/s total | dedicated collective cores |
+| Trainium3 | 144 chips | NeuronSwitch, all-to-all | 2.0–2.56 TB/s total | — |
+
+Sources: <Cite id="SB12" at="#networking" />, <Cite id="N-gb200" />, <Cite id="SB2" at="#tpu-networking" />, <Cite id="G-8dd" />, <Cite id="A-trn2-sys" />, <Cite id="A-trn3-sys" />.
+
+Beyond the scale-up domain, GPUs and Trainium use an InfiniBand or Ethernet fat tree. An 8-GPU H100 node has 400 GB/s of egress, 50 GB/s per GPU. A GB200 NVL72 rack has 3.6 TB/s <Cite id="SB12" at="#appendix-a-how-does-this-change-with-gb200" />. TPUs use DCN between pods: 12.5 GB/s per Ironwood chip, and up to 4× that on 8t.
+
+**What each design makes cheap.**
+
+- **A switch makes all-to-all traffic cheap,** and makes small, latency-bound collectives fast: one hop, plus SHARP for reductions. An AllToAll inside an NVLink node costs about half what it does on a TPU ring <Cite id="SB12" at="#intra-node-collectives" />.
+- **A torus makes scale cheap.** The pod adds links in proportion to chips, so per-chip bandwidth stays constant up to about 9,000 chips with no switch silicon. Ring collectives along an axis get full bandwidth at 10 MB messages.
+
+<Interactive caption={<><b>Comparison explorer.</b> Choose up to four chips and a workload: a matmul, a decode step, an AllGather or an AllToAll. See each chip's predicted time and what bounds it. Start with an AllToAll of 1 GB, then move N from 8 to 64 to 512: the NVLink domain leads while the job fits inside it, and the TPU's 3D torus catches up once the job spans racks. The models are idealized; see the note below the table.</>}>
+  <CompareExplorer />
+</Interactive>
+
+<Worked title="1 GB collectives, idealized (scripts/ch11_compare.py)">
+
+| | 8 chips | 64 chips | 512 chips |
+|---|---|---|---|
+| AllGather, Ironwood | 5.0 ms (one ring) | 1.7 ms (3 axes) | 1.7 ms |
+| AllGather, H100 | 1.9 ms | 2.5 ms (8 nodes) | 2.5 ms |
+| AllGather, GB200 NVL72 | 1.0 ms | 1.1 ms | 1.1 ms (8 racks) |
+| AllToAll, Ironwood | 1.25 ms | 0.078 ms | 0.020 ms |
+| AllToAll, H100 | 0.28 ms | 0.31 ms | 0.039 ms |
+| AllToAll, GB200 NVL72 | 0.14 ms | 0.017 ms | 0.039 ms |
+
+At 8 chips, a small TPU slice uses one ring, and the GPU node's one-hop switch wins by 2.5–9×. At 64 chips, a 4×4×4 cube has three axes and a large bisection, but NVL72 still wins the AllToAll by about 4.5×. Past one rack, the GPU falls to its scale-out network, and the torus's bisection, which grows as $N^{2/3}$, wins.
+
+</Worked>
+
+**Practical reach** differs from these formulas. The Scaling Book reports that an 8×H100 AllReduce peaks around 370 GB/s of 450 only near 10 GB messages, and that multi-node AllToAll may not reach 50% of theory <Cite id="SB12" at="#intra-node-collectives" />. A v5e AllGather reaches about 95% of peak at about 10 MB <Cite id="SB3" at="#a-deeper-dive-into-tpu-communication-primitives" />.
+
+## Training rooflines, side by side
+
+The same derivation as Chapter 6, with each platform's bandwidth <Cite id="SB12" at="#rooflines-for-llm-scaling-on-gpus" />:
+
+| | α = C / W for collectives | DP/FSDP: tokens per chip | TP limit for F = 28,672 |
+|---|---|---|---|
+| v5p, 3 axes | 2,550 | 850 | about 11 per axis |
+| Ironwood, 3 axes | 11,535 | 3,845 | about 2.5 per axis |
+| H100 in node | 2,200 | 2,200 | about 13 |
+| H100 across nodes | 2,475 | 2,475 | (TP stays in node) |
+| B200 across nodes | 5,625 | 5,625 | (TP stays in node) |
+
+GPU recipes follow from the 8-GPU boundary: tensor parallelism inside a node, then pipeline, expert and data parallelism across nodes. LLaMA-3 used TP 8 × PP 16 × DP 128; DeepSeek-V3 used EP 64 × PP 16 × DP 2 (Chapter 6). TPU recipes follow from the pod: FSDP and TP inside one ICI domain, data parallelism across pods. The Ironwood row is the outlier, discussed in Chapter 6.
+
+## Software and programming model
+
+| | NVIDIA | Google TPU | AWS Trainium |
+|---|---|---|---|
+| Kernel language | CUDA, CUTLASS, Triton; threads and blocks; implicit caching | Pallas (Mosaic TPU); grid and BlockSpecs; compiler-pipelined DMA | NKI; explicit DMA to SBUF; programmer picks the engine |
+| Compilation | eager kernels; CUDA Graphs replay; torch.compile/Inductor per graph | whole-program XLA; static shapes | neuronx-cc to NEFF |
+| PyTorch | native | TorchTPU (PrivateUse1, eager and torch.compile → XLA) | TorchNeuron (PrivateUse1, beta) |
+| Collectives | NCCL kernels on SMs | HLO ops scheduled by XLA, on DMA engines | dedicated collective cores |
+| Partitioning a chip | MIG splits one GPU | slices of whole chips | LNC merges NeuronCores |
+
+Sources: <Cite id="N-graphs" />, <Cite id="T-pt" />, <Cite id="A-torch" />, <Cite id="A-nki" />, Chapters 9–10.
+
+## Where each design has the structural advantage
+
+| Workload | Advantage | Why |
+|---|---|---|
+| Large dense pretraining | TPU (v5p-class α), GPU close behind | thousands of chips at full ICI bandwidth; FSDP and TP inside one domain. On Ironwood, α favours larger batches per chip |
+| MoE training with many experts | GPU NVL72 inside 72; TPU torus at multi-rack scale | AllToAll is one hop in a switch; bisection grows with a 3D torus |
+| Low-latency, small-batch decode | GPU NVL72, TPU 8i | latency-bound collectives want few hops: one hop on NVLink, at most 7 on Boardfly |
+| Long-context decode throughput | whichever has the most HBM bandwidth and capacity per dollar | KV-read-bound (Chapter 7): Rubin and 8i lead on bandwidth per chip |
+| Embedding-heavy recommendation | TPU (SparseCore) | dedicated gather/scatter engines, 5–7× on v4 |
+| Research code with new ops or dynamic shapes | GPU | eager execution and a hardware cache tolerate irregularity; XLA does not |
+
+Price changes these comparisons, and it is not in any spec sheet. In February 2025, the Scaling Book's Google Cloud prices gave v5e 5.8 × 10¹⁷ FLOPs per dollar, against 3.3 × 10¹⁷ for an H100 <Cite id="SB8" at="#whats-the-llama-serving-story" />.
+
+## Convergence, 2025–26
+
+- **GPUs are adding TPU features.**
+  - Blackwell added 256 KB of Tensor Memory per SM, because accumulators no longer fit in registers <Cite id="SB12" at="#memory" />.
+  - Tensor Cores have grown each generation: fed by one warp on Ampere, a whole SM on Hopper and two SMs on Blackwell <Cite id="SB12" at="#what-is-a-gpu" />.
+  - Both move toward larger matrix units with a dedicated accumulator store fed by bulk copies (TMA), closer to an MXU fed from VMEM than to warps in registers.
+- **Trainium moved toward the GPU.** It replaced Trn2's torus with Trn3's NeuronSwitch <Cite id="A-trn3-sys" />, and AWS has previewed NVLink Fusion for Trainium4 <Cite id="A-trn4" />.
+- **TPU split by workload.** 8t keeps the training torus; 8i adopts a low-diameter network and a large SRAM <Cite id="G-8dd" />.
+- **PyTorch moved off torch-xla on both TPU and Trainium,** to native `PrivateUse1` backends (Chapter 9).
+
+The evidence against full convergence: GPUs still have over 100 independent SMs, a hardware cache and eager execution. TPUs still have two cores per chip, a compiler-managed scratchpad and whole-program compilation. The design bets of the first section have not changed; the boundaries between them have moved.
+
+## Worked problems from the book
+
+<Worked title="Counting units and moving bytes">
+
+From the Scaling Book's GPU chapter quizzes <Cite id="SB12" at="#quiz-1-gpu-hardware" />.
+
+- **Vector lanes:** an H100 has $132 \cdot 4 \cdot 32 = 16{,}896$ fp32 CUDA cores. A TPU v5p has $2 \cdot 4 \cdot 8 \cdot 128 = 8{,}192$ VPU ALUs, about half, at a similar clock.
+- **AllGather inside an 8×H100 node:** bf16[4096, 65536] is 537 MB. At 450 GB/s, $537 \times 10^6 \cdot 7 / (8 \cdot 450 \times 10^9)$ = 1.04 ms; in practice about 1.5 ms.
+- **AllGather across exactly 2 nodes:** the node level is $B / 514$ GB/s and the cross-node level $B / 800$ GB/s. The node level is the bottleneck, one reason DeepSeek-V3 used 2-way data parallelism.
+- **B200 rooflines:** inside a node, TP stays compute-bound up to $F / 2{,}500$ ways. Across nodes, data parallelism needs 5,625 tokens per GPU, because FLOPs grew 2.25× while scale-out bandwidth per node stayed at 400 GB/s. GB200's 3.6 TB/s per rack restores it.
+
+</Worked>

@@ -1,0 +1,150 @@
+# Chapter 11 quiz. Numbers from scripts/ch11_compare.py and scripts/specs.py.
+- id: ch11-bets
+  type: mcq
+  prompt: "Which pairing of design bet and cost is correct?"
+  options:
+    - text: "TPU: few single-threaded cores, a compiler-managed scratchpad and whole-program compilation; cost: static shapes and poor tolerance for irregular access."
+      correct: true
+      why: "In return it gets closer to peak with less work and cheaper silicon, per the Scaling Book."
+    - text: "GPU: few large cores; cost: low flexibility."
+      why: "GPUs have over 100 independent SMs and are the more flexible design."
+    - text: "TPU: hardware caches; cost: unpredictable performance."
+      why: "TPUs have no cache in the data path; performance is unusually predictable."
+    - text: "Trainium: one core per chip; cost: no matrix unit."
+      why: "Trainium2 has 8 NeuronCores, each with a 128×128 systolic tensor engine."
+  source: "SB12 #gpus-vs-tpus-at-the-chip-level"
+
+- id: ch11-ridge
+  type: numeric
+  prompt: "GB200 delivers about 2.5 PFLOP/s dense BF16 per GPU with 8 TB/s of HBM. What is its BF16 ridge point?"
+  answer: 312
+  tolerance: 0.03
+  unit: FLOP/B
+  explanation: "$2.5\\times10^{15}/8\\times10^{12} = 312$, nearly identical to Ironwood's 313. Batch-size intuitions transfer directly between the two."
+  source: "N-gb200"
+
+- id: ch11-sram
+  type: mcq
+  prompt: "Which has the most programmer-managed on-chip SRAM per chip?"
+  options:
+    - text: "Trainium2: 8 × 28 MiB of SBUF = 224 MiB"
+      correct: true
+      why: "Ironwood has 128 MiB of VMEM; an H100 has about 30 MB of shared memory plus a 50 MB hardware-managed L2. TPU 8i, at 384 MB, would exceed all of them."
+    - text: "H100: 50 MB of L2"
+      why: "L2 is a hardware cache, not programmer-managed."
+    - text: "Ironwood: 128 MiB of VMEM"
+      why: "Less than Trainium2's 224 MiB of SBUF."
+    - text: "B200: 126 MB of L2"
+      why: "Again a hardware cache."
+  source: "A-trn2"
+
+- id: ch11-a2a-small
+  type: scenario
+  prompt: "An MoE layer's 1 GB AllToAll runs on 64 chips. Idealized models give 0.017 ms on GB200 NVL72 and 0.078 ms on an Ironwood 4×4×4 cube. Why does NVL72 win here?"
+  options:
+    - text: "All 64 GPUs sit in one NVLink domain, one hop apart at 900 GB/s each way, while the cube moves data over multiple torus hops."
+      correct: true
+      why: "A switched domain makes all-to-all patterns cheap. Past one rack, at 512 chips, the GPU falls to scale-out and the torus wins (0.020 against 0.039 ms)."
+    - text: "TPUs cannot run AllToAll."
+      why: "They can; it costs a quarter of an AllGather in 1D and falls with more axes."
+    - text: "GB200 has more HBM bandwidth."
+      why: "HBM is not involved in the collective's bandwidth term."
+    - text: "Ironwood's OCS adds latency per message."
+      why: "The OCS sets up circuits once; it is not in the packet path."
+  source: "SB12 #intra-node-collectives"
+
+- id: ch11-a2a-large
+  type: mcq
+  prompt: "At 512 chips, the idealized AllToAll model favours Ironwood over GB200 NVL72 racks. Why?"
+  options:
+    - text: "The job spans about 7 NVL72 racks, so traffic crosses the scale-out network, while the 8×8×8 torus keeps full ICI bandwidth with bisection growing as N^(2/3)."
+      correct: true
+      why: "Cross-node AllToAll costs about V/(M · egress) on GPUs, and the book warns it may not reach 50% of theory."
+    - text: "Ironwood has more FLOPs."
+      why: "FLOPs do not enter the collective's time."
+    - text: "NVLink cannot address 512 GPUs."
+      why: "The issue is that beyond 72 the traffic leaves NVLink for slower scale-out."
+    - text: "TPUs use SHARP."
+      why: "TPUs have no in-network reduction."
+  source: "SB12 #cross-node-collectives"
+
+- id: ch11-dp
+  type: numeric
+  prompt: "For data parallelism across H100 nodes (990 TFLOP/s per GPU, 400 GB/s egress per 8-GPU node), what is the minimum batch per GPU, in tokens, for compute-bound gradient sync?"
+  answer: 2475
+  tolerance: 0.02
+  unit: tokens
+  explanation: "$9.9\\times10^{14}/4\\times10^{11} = 2{,}475$. A v5p pod needs 850 per chip across 3 torus axes; B200 across nodes needs 5,625."
+  source: "SB12 #data-parallelism"
+
+- id: ch11-b200
+  type: mcq
+  prompt: "Why is data parallelism across B200 nodes harder to make compute-bound than across H100 nodes?"
+  options:
+    - text: "B200 has 2.25× the FLOPs, but the 8-GPU node's scale-out egress stayed at 400 GB/s, so the needed batch per GPU rose to about 5,625."
+      correct: true
+      why: "GB200 NVL72's 3.6 TB/s per rack restores the ratio."
+    - text: "B200 has less HBM."
+      why: "It has more."
+    - text: "NVLink 5 is slower."
+      why: "NVLink 5 doubled per-GPU bandwidth."
+    - text: "B200 lacks SHARP."
+      why: "In-network reduction exists; the binding term is scale-out bandwidth per FLOP."
+  adapted_from: SB12 Quiz 5 Q1
+  source: "SB12 #quiz-5-llm-rooflines"
+
+- id: ch11-cores
+  type: numeric
+  prompt: "An H100 has 132 SMs, each with 4 subpartitions of 32 fp32 CUDA cores. How many fp32 CUDA cores in total?"
+  answer: 16896
+  tolerance: 0.001
+  unit: cores
+  explanation: "$132 \\cdot 4 \\cdot 32 = 16{,}896$. A TPU v5p has $2 \\cdot 4 \\cdot 8 \\cdot 128 = 8{,}192$ VPU ALUs, about half."
+  adapted_from: SB12 Quiz 1
+  source: "SB12 #quiz-1-gpu-hardware"
+
+- id: ch11-node-ag
+  type: numeric
+  prompt: "An AllGather of bf16[4096, 65536] runs inside an 8×H100 node at 450 GB/s per GPU. Using $V(N-1)/(N W)$, how long, in ms?"
+  answer: 1.04
+  tolerance: 0.04
+  unit: ms
+  explanation: "V = 537 MB: $5.37\\times10^8 \\cdot 7/(8 \\cdot 4.5\\times10^{11}) = 1.04$ ms. The book expects about 1.5 ms in practice."
+  adapted_from: SB12 Quiz 2
+  source: "SB12 #quiz-2-gpu-nodes"
+
+- id: ch11-trainium-topology
+  type: mcq
+  prompt: "How did Trainium's scale-up topology change from Trn2 to Trn3?"
+  options:
+    - text: "From a 4×4 2D torus per instance (rings across 4 instances) to NeuronSwitch, an all-to-all switched fabric of up to 144 chips."
+      correct: true
+      why: "Aimed at MoE and autoregressive serving. AWS has also previewed NVLink Fusion for Trainium4."
+    - text: "From switched to torus."
+      why: "The reverse."
+    - text: "From 16 to 9,216 chips."
+      why: "That is a TPU pod scale."
+    - text: "It did not change."
+      why: "Trn3 replaced the torus."
+  source: "A-trn3-sys"
+
+- id: ch11-workload
+  type: scenario
+  prompt: "A research team runs models with frequently changing custom ops and data-dependent shapes. Which platform has the structural advantage?"
+  options:
+    - text: "GPU: eager execution and a hardware cache tolerate irregular, changing code; XLA wants static shapes and recompiles on change."
+      correct: true
+      why: "TorchTPU's eager modes narrow the gap, but whole-program compilation remains the TPU's performance path."
+    - text: "TPU: whole-program compilation adapts to any shape."
+      why: "It compiles for exact shapes."
+    - text: "Trainium: NKI handles dynamic shapes automatically."
+      why: "NKI kernels are compiled for given shapes too."
+    - text: "No difference."
+      why: "Dynamic shapes are one of the clearest differences."
+  source: "SB12 #gpus-vs-tpus-at-the-chip-level"
+
+- id: ch11-explain
+  type: free
+  prompt: "Explain to a room of CUDA engineers what a TPU gives up relative to a GPU, what it gets in return, and how to tell which side of that trade their workload is on."
+  model_answer: "A TPU gives up independent cores, hardware latency hiding and caches: an Ironwood chip is two single-threaded TensorCores with systolic arrays and a 128 MiB compiler-managed scratchpad, and XLA compiles the whole step for static shapes. In return the compiler sees everything, so it schedules every DMA and collective ahead of time and gets close to the roofline with less tuning. The silicon is simpler and cheaper, and a pod puts about 9,000 chips on one direct-connect torus with constant per-chip bandwidth. The GPU keeps flexibility: over 100 SMs, warp scheduling, an L2 cache, eager execution, and a one-hop NVLink domain that makes all-to-all and small collectives cheap within 8 or 72 GPUs. Your workload is on the TPU side if shapes are stable, the work is dominated by large matmuls and bandwidth-bound decode, and scale beyond one NVLink domain matters. It is on the GPU side if code and shapes change often, ops are irregular, or the job is an MoE whose AllToAll fits inside one NVL72 rack. Ridge points are about 300 on both sides this generation, so roofline intuition transfers."
+  source: "SB12 #gpus-vs-tpus-at-the-chip-level"

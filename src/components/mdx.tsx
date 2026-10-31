@@ -16,6 +16,7 @@ import { BreakevenCalc } from '../interactives/BreakevenCalc';
 import { ServingStackDiagram } from '../interactives/ServingStackDiagram';
 import { HloDecoder } from '../interactives/HloDecoder';
 import { TraceReader } from '../interactives/TraceReader';
+import { CompareExplorer } from '../interactives/CompareExplorer';
 
 type Src = { id: string; title: string; url: string; section: string };
 const SRC = sources as Record<string, Src>;
@@ -216,4 +217,5 @@ export const mdxComponents = {
   ServingStackDiagram,
   HloDecoder,
   TraceReader,
+  CompareExplorer,
 };
