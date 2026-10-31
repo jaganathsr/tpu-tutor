@@ -1,0 +1,100 @@
+<Slide title="One number decides the mesh">
+
+$$
+\alpha = \frac{C}{W_\text{ici}}
+$$
+
+<Gloss>FLOPs a chip must do per byte moved on one torus axis.</Gloss>
+
+| Chip | α |
+|---|---|
+| v5p | 2,550 (book), 2,295 (docs) |
+| Ironwood | 11,535 |
+| TPU 8t | about 2,490 (provisional) |
+| H100, across nodes | 2,475 |
+
+</Slide>
+
+<Slide title="Conditions for compute-bound training">
+
+| Scheme | Condition | v5p | Ironwood |
+|---|---|---|---|
+| DP / FSDP | $B/X > \alpha/M_X$ | 850 (3 axes) | 3,845 |
+| TP | $Y < M_Y F / \alpha$ | 11-way | 2.5-way |
+| FSDP + TP | $B/N > \alpha^2/(M_X M_Y F)$ | 113 | 2,320 |
+| DP over DCN | $B/\text{slice} > C / W_\text{dcn}$ | 73,440 | 185,000 |
+
+For LLaMA-3-70B ($F$ = 28,672), tokens per chip or per slice.
+
+</Slide>
+
+<Slide title="LLaMA-3-70B, 4M-token batch">
+
+<Cols>
+<div>
+
+**v5p pod, 8,960 chips**
+
+- 468 tokens per chip, threshold 113.
+- $X_\text{opt}$ = 1,619: about 2,048 FSDP × 4 TP.
+- 44 days at 40% MFU.
+
+</div>
+<div>
+
+**Ironwood pod, 9,216 chips**
+
+- 455 tokens per chip, threshold 2,320.
+- Communication-bound by about 2×.
+- Compute-bound up to about 1,800 chips; about 7,200 at a 16M batch.
+
+</div>
+</Cols>
+
+</Slide>
+
+<Slide title="Why Ironwood is different">
+
+<Cols>
+<div>
+<Big n="5×">v5p's BF16 FLOPs per chip</Big>
+</div>
+<div>
+<Big n="1×">v5p's ICI bandwidth per link</Big>
+</div>
+</Cols>
+
+- Larger batches, fewer chips per slice plus DCN data parallelism, pipeline stages, overlap.
+- TPU 8t doubles ICI: α back to about 2,490 with the provisional BF16 figure.
+
+</Slide>
+
+<Slide title="GPU recipe for comparison">
+
+- H100 α: 2,200 in node, 2,475 across nodes. Similar thresholds; different topology.
+- NVLink stops at 8 GPUs, so TP stays in the node and PP + DP carry the scale.
+- LLaMA-3 405B: 16,384 H100s, TP 8 × PP 16 × DP 128, 16M tokens, 41% MFU.
+- DeepSeek-V3: 2,048 H800s, EP 64 × PP 16 × DP 2.
+
+</Slide>
+
+<Slide title="MaxText encodes the chapter">
+
+- `ici_fsdp_parallelism: -1`: FSDP fills the slice.
+- `dcn_data_parallelism: -1`: data parallelism across slices.
+- `dcn_tensor_parallelism`: "never recommended".
+- `logical_axis_rules`: named dimensions (embed, mlp, heads) to mesh axes.
+
+</Slide>
+
+<Slide title="Worked: LLaMA-3-405B on 8 v5p pods (derived)">
+
+| Quantity | Value |
+|---|---|
+| Parameters / FLOPs | 406B / 3.8e25 (15.6T tokens) |
+| Time at 40% MFU | about 33 days |
+| Per pod, 16M batch | 2.1M tokens (DCN needs 73,440) |
+| Per chip | 234 tokens (FSDP+TP needs 61) |
+| Mesh | about 1,000 FSDP × 8 TP per pod, 8 DP across pods |
+
+</Slide>

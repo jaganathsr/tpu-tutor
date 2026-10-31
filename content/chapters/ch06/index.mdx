@@ -1,0 +1,184 @@
+---
+objectives:
+  - I can derive the condition under which each training scheme is compute-bound — data parallelism, FSDP, tensor parallelism, FSDP plus TP, and cross-slice data parallelism over DCN.
+  - I can compute the optimal FSDP degree, X_opt, and pick a mesh for a given model, batch and slice.
+  - I can redo the Scaling Book's LLaMA-3-70B plan on a v5p pod, and explain why the same batch is communication-bound on a full Ironwood pod.
+  - I can explain why pipeline parallelism is central to GPU recipes and secondary on TPUs, citing LLaMA-3's actual GPU configuration.
+  - I can map these choices to MaxText configuration — ici_* against dcn_* axes and logical axis rules.
+teachback:
+  - Give the one-line rule for when FSDP stops being free, with the number for v5p and for Ironwood.
+  - Why did Meta use 16-way pipeline parallelism for LLaMA-3 405B on GPUs, when a TPU pod would mostly not?
+  - Choose a mesh for a 70B dense model on a 2,048-chip Ironwood slice with a 4M-token batch, and say whether it is compute-bound.
+  - What would you change if your Ironwood training run is communication-bound and you cannot raise the batch?
+sources:
+  - { id: SB5, anchor: "#data-parallelism", label: "Data parallelism" }
+  - { id: SB5, anchor: "#fully-sharded-data-parallelism-fsdp", label: "FSDP" }
+  - { id: SB5, anchor: "#tensor-parallelism", label: "Tensor parallelism" }
+  - { id: SB5, anchor: "#combining-fsdp-and-tensor-parallelism", label: "FSDP + TP" }
+  - { id: SB5, anchor: "#pipelining", label: "Pipelining" }
+  - { id: SB5, anchor: "#scaling-across-pods", label: "Across pods (DCN)" }
+  - { id: SB5, anchor: "#some-problems-to-work", label: "Problems" }
+  - { id: SB6, anchor: "#how-to-shard-llama-3-70b-for-training", label: "Sharding LLaMA 3-70B" }
+  - { id: SB6, anchor: "#worked-problems", label: "Worked problems" }
+  - { id: SB12, anchor: "#rooflines-for-llm-scaling-on-gpus", label: "GPU rooflines" }
+  - { id: P-Llama3, label: "Tables 3–4, §3.3–3.4" }
+  - { id: R-maxtext, label: "base.yml mesh, sharding guide" }
+  - { id: P-GSPMD, label: "§3.3 pipelining as sharding" }
+  - { id: D-7x }
+  - { id: G-8dd }
+---
+
+Chapter 5 priced each collective. This chapter adds them up for a training step, using the Scaling Book's model of a transformer layer as two matmuls, $\text{In}[B, D] \cdot W_\text{in}[D, F] \cdot W_\text{out}[F, D]$, with $B$ the global batch in tokens <Cite id="SB5" at="#what-do-we-mean-by-scaling" />. For each scheme the question is the same: does the math per layer take longer than the communication it needs? Each answer is an inequality in one number, the chip's ICI intensity:
+
+$$
+\alpha = \frac{C}{W_\text{ici}}
+\tag{6.1}
+$$
+
+<Gloss>FLOP/s per byte/s of one torus axis. The number of FLOPs a chip must do for every byte it moves over ICI to stay compute-bound.</Gloss>
+
+| Chip | α per axis | Source of W_ici |
+|---|---|---|
+| v5p | 2,550 | Scaling Book, 180 GB/s |
+| v5p | 2,295 | Cloud docs, 200 GB/s |
+| Ironwood | 11,535 | Cloud docs, 200 GB/s |
+| TPU 8t | about 2,490 <Provisional /> | "2× Ironwood" ICI, BF16 from the JAX table |
+
+Computed in `scripts/ch06_training.py`. The book's derivations use v5p at 2,550. This chapter keeps that for the book's examples and re-runs them for Ironwood.
+
+## Data parallelism and FSDP
+
+**Data parallelism** keeps a full copy of the weights on every chip and splits the batch. The forward pass needs no communication. The backward pass AllReduces the weight gradients, and those AllReduces can overlap with the rest of the backward pass <Cite id="SB5" at="#data-parallelism" />. Per layer:
+
+$$
+\frac{B}{X} > \frac{\alpha}{M_X}
+\tag{6.2}
+$$
+
+<Gloss>The batch per chip must exceed the ICI intensity, divided by the number of torus axes the data-parallel dimension spans.</Gloss>
+
+This is the network version of the 240-token rule from Chapter 1. On v5p it is 2,550 tokens per chip on one axis, or 850 when the data axis spans all three torus axes <Cite id="SB5" at="#data-parallelism" />. Plain data parallelism also needs the full model plus optimizer on each chip: 10 bytes per parameter, so at most about 9B parameters on a 96 GB v5p chip.
+
+**FSDP** (ZeRO-3) shards weights, gradients and optimizer state along the data axis. It AllGathers each layer's weights just before use and ReduceScatters gradients after. An AllReduce costs a ReduceScatter plus an AllGather, so FSDP moves the same bytes as data parallelism and has the same condition, 6.2, while removing the memory limit <Cite id="SB5" at="#fully-sharded-data-parallelism-fsdp" />. The book's conclusion: "we can basically always do ZeRO-3".
+
+On Ironwood, condition 6.2 is 11,535 tokens per chip on one axis and 3,845 across three <Derived />.
+
+## Tensor parallelism
+
+**Tensor parallelism** (Megatron) shards the weights along F, AllGathers activations before $W_\text{in}$ and ReduceScatters them after $W_\text{out}$. These collectives sit on the critical path: the next layer cannot start without them <Cite id="SB5" at="#tensor-parallelism" />. The condition no longer involves the batch:
+
+$$
+F > Y \cdot \frac{\alpha}{M_Y} \quad\iff\quad Y < M_Y \cdot \frac{F}{\alpha}
+\tag{6.3}
+$$
+
+<Gloss>Tensor parallelism stays compute-bound only up to F/α ways per torus axis it spans, whatever the batch.</Gloss>
+
+For LLaMA-3-70B, $F = 28{,}672$: up to about 11-way per axis on v5p, which in practice means 8-way. On Ironwood the same formula allows about 2.5-way per axis <Derived />. Quantizing to int8 or fp8 does not help: it halves the bytes and doubles $C$, so α per byte moved is unchanged <Cite id="SB5" at="#tensor-parallelism" />.
+
+## FSDP and tensor parallelism together
+
+FSDP moves weights; tensor parallelism moves activations. Combining them on an $X \times Y$ mesh trades one against the other <Cite id="SB5" at="#combining-fsdp-and-tensor-parallelism" />:
+
+$$
+T_\text{math} = \frac{4BDF}{NC}, \quad T_\text{FSDP} = \frac{4DF}{Y\,W_\text{ici}\,M_X}, \quad T_\text{TP} = \frac{4BD}{X\,W_\text{ici}\,M_Y}
+\tag{6.4}
+$$
+
+<Gloss>More FSDP (larger X) means larger TP collectives on fewer chips; more TP means weight gathers spread over fewer chips. The best split balances the two.</Gloss>
+
+Setting the two communication terms equal gives the optimal FSDP degree, and requiring math to exceed communication there gives the minimum batch per chip:
+
+$$
+X_\text{opt} = \sqrt{\frac{B}{F} \cdot \frac{M_X}{M_Y} \cdot N}, \qquad \frac{B}{N} > \frac{\alpha^2}{M_X M_Y F}
+\tag{6.5}
+$$
+
+<Gloss>The optimal FSDP degree grows with the square root of batch and chip count. Mixed FSDP and TP needs far fewer tokens per chip than FSDP alone, because the requirement now scales with α² / F.</Gloss>
+
+On v5p, with $F = 28{,}672$ and $M_X M_Y = 2$, the threshold is about 113 tokens per chip, roughly an eighth of FSDP alone across three axes.
+
+<Interactive caption={<><b>Mesh planner.</b> Per-layer forward-pass time for math, FSDP weight gathers and tensor-parallel activation collectives, as a function of the FSDP degree for a fixed number of chips. The dotted vertical line is X_opt; the dot is the split you chose. Switch between v5p and Ironwood at the same batch to see the effect of α.</>}>
+  <MeshPlanner />
+</Interactive>
+
+## Case study: LLaMA-3-70B on a v5p pod
+
+The Scaling Book's Chapter 6 works this through <Cite id="SB6" at="#how-to-shard-llama-3-70b-for-training" />: a 4M-token batch (1,024 sequences of 4,096), 15T tokens, one v5p pod of 8,960 chips.
+
+- **Time:** $6 \cdot 70 \times 10^9 \cdot 15 \times 10^{12} = 6.3 \times 10^{24}$ FLOPs; at 40% MFU, 44 days. The script gets 45 with 70.5B parameters.
+- **Memory is not the constraint:** about 1.3 GB per chip spread over the pod.
+- **Pure FSDP over batch:** at most 1,024-way, since there are only 1,024 sequences. Not enough chips.
+- **FSDP over batch and sequence:** 468 tokens per chip, below the 850 needed. Communication-bound.
+- **FSDP plus TP:** the threshold is 113 tokens per chip and there are 468, so it is compute-bound. $X_\text{opt} \approx 1{,}618$, so about **2,048-way FSDP × 4-way TP**.
+
+The book's summary: on a full v5p pod, a mixture of 1,024-way data parallelism, 2-way sequence parallelism and 4-way tensor parallelism avoids being communication-bound.
+
+### The same job on an Ironwood pod
+
+Run the same numbers with Ironwood's α of 11,535 <Derived />:
+
+- 4,194,304 tokens over 9,216 chips is **455 tokens per chip**.
+- FSDP plus TP needs $11{,}535^2 / (2 \cdot 28{,}672) \approx$ **2,320 tokens per chip**.
+- At the best split, math is about 0.44 of communication: the step is communication-bound by about 2×.
+- The largest slice on which this batch stays compute-bound is about **1,800 chips**. There, the run takes about 44 days, the same as a full v5p pod.
+- Raising the batch to 16M tokens, as LLaMA-3 did later in training <Cite id="P-Llama3" s="§3.4" />, makes about 7,200 chips compute-bound.
+
+The cause is the ratio from Chapter 1: Ironwood has 5× v5p's FLOPs per chip and the same ICI bandwidth per link <Cite id="D-7x" />. The model is simplified. It ignores overlap between collectives and other layers' compute, and gated MLPs change the constants. The direction is robust: on Ironwood, dense training wants larger batches per chip, fewer chips per job, or less ICI traffic per FLOP. Google's TPU 8t doubles ICI bandwidth relative to Ironwood <Cite id="G-8dd" />. With the provisional BF16 figure, that brings α back to about 2,490, v5p's level.
+
+<Note>
+Everything in this section is the Scaling Book's model applied to Ironwood's published specs. It is a prediction, not a measurement. Google has not published LLaMA-3-scale training efficiency figures for Ironwood.
+</Note>
+
+## Pipelining
+
+Pipeline parallelism splits the model by layers across stages and passes activations between them. Per layer it moves only $[B, D]$ activations, once, between adjacent stages, so its communication is small. The costs are the pipeline bubble and the complexity of interleaved schedules. The Scaling Book calls pipelining "a dominant strategy for GPU parallelism that is somewhat less essential on TPUs", because a TPU pod already provides thousands of chips at full ICI bandwidth <Cite id="SB5" at="#pipelining" />. In GSPMD, pipelining is expressed as sharding over a stage axis <Cite id="P-GSPMD" s="§3.3" />, and MaxText has a `stage` mesh axis for it <Cite id="R-maxtext" />.
+
+On Ironwood the trade shifts. Pipelining's small communication is exactly what a high α favours, so expect pipeline stages to be more attractive there than on v5p <Derived />.
+
+<GpuAnalogy title="GPU analogy: the LLaMA-3 recipe">
+<p>The same rooflines on H100s give α of about 2,200 inside an NVLink node (450 GB/s) and 2,475 across nodes (400 GB/s per 8-GPU node) <Cite id="SB12" at="#data-parallelism" />. The thresholds are similar to v5p. The topology is not: high-bandwidth collectives stop at 8 GPUs, so tensor parallelism stays within a node, and pipelining and data parallelism carry the scale. Meta's LLaMA-3 405B run on 16,384 H100s used 8-way TP, 16-way pipeline, 128-way data parallelism and a 16M-token batch, at 41% BF16 MFU <Cite id="P-Llama3" s="Table 4" />. DeepSeek-V3 on 2,048 H800s used 64-way expert parallelism, 16-way pipeline and 2-way data parallelism <Cite id="SB12" at="#examples" />.</p>
+</GpuAnalogy>
+
+<AnalogyBreaks>
+<p>On a GPU cluster, the 8- or 72-GPU NVLink domain is the boundary that forces pipelining. On v5p, the boundary is the 8,960-chip pod, so FSDP and TP inside one ICI domain can carry the whole job. On Ironwood, the boundary that matters is not topology but α. The pod is large, but each chip's ICI bandwidth is small relative to its FLOPs, and that pushes toward the same tools GPU users reach for: pipelining and larger per-chip batches.</p>
+</AnalogyBreaks>
+
+## Across pods: DCN
+
+Beyond one slice, chips talk over DCN. The book's recipe is model parallelism or FSDP within a slice, and pure data parallelism across slices <Cite id="SB5" at="#scaling-across-pods" />. Gradients cross DCN once per step, and the condition is on the batch per slice:
+
+$$
+\frac{B}{\text{slices}} > \frac{C}{W_\text{dcn}}
+\tag{6.6}
+$$
+
+<Gloss>Each slice's share of the batch must exceed the chip's FLOPs per byte of DCN bandwidth.</Gloss>
+
+On v5p, at 6.25 GB/s of DCN per chip, that is 73,440 tokens per slice; the book rounds to "about 71,000" in places. On Ironwood, at 12.5 GB/s, it is about 185,000 tokens per slice <Derived />. These are easy to meet: a 4M-token batch over 4 pods is 1M per pod. The Scaling Book's worked problem 1, with no published answer, scales LLaMA-3-70B to 4 v5p pods at the same batch. 1M tokens per pod clears 73,440. 117 tokens per chip just clears the FSDP-plus-TP threshold of 113. The run takes about 11 days <Derived />.
+
+MaxText encodes the whole chapter in two lines of its default config. FSDP takes all remaining devices inside a slice (`ici_fsdp_parallelism: -1`) and data parallelism takes all slices (`dcn_data_parallelism: -1`). Its `logical_axis_rules` then map named tensor dimensions such as `embed`, `mlp` and `heads` onto those mesh axes <Cite id="R-maxtext" />.
+
+<Worked title="LLaMA-2-13B on 4,096 v5p chips">
+
+The Scaling Book's Chapter 5, problem 3 <Cite id="SB5" at="#some-problems-to-work" />: a 3M-token batch at 32k context on a v5p 16×16×16.
+
+- Pure data parallelism: no. 130 GB of parameters and optimizer state exceeds 96 GB per chip.
+- Pure FSDP: memory fits, but it needs $850 \cdot 4{,}096 = 3.48$M tokens, more than 3M. Communication-bound.
+- FSDP plus TP: the threshold is $2550^2 / (2 \cdot 13{,}824) = 235$ tokens per chip, and there are 732. $X_\text{opt} = 1{,}333$, so about 1,024-way FSDP × 4-way TP.
+- Step time at 40% MFU: about 300 ms. The script gets 312 with 13.0B parameters.
+
+</Worked>
+
+<Worked title="LLaMA-3-405B on 8 v5p pods (derived; no book answer)">
+
+The Scaling Book's Chapter 6, problem 2 asks for this without an answer. The shape is from the Llama 3 paper: 126 layers, $D = 16{,}384$, $F = 53{,}248$, 128 heads, 8 KV heads <Cite id="P-Llama3" s="Table 3" />.
+
+- Parameters: 406B. Training on 15.6T tokens: $3.8 \times 10^{25}$ FLOPs, matching the paper's own figure.
+- On 8 v5p pods (71,680 chips) at 40% MFU: about 33 days.
+- Batch 16M: 2.1M tokens per pod, far above 73,440 for DCN. 234 tokens per chip, above the FSDP-plus-TP threshold of $2550^2/(2 \cdot 53{,}248) = 61$.
+- Mesh per pod: $X_\text{opt} \approx 840$. Tensor parallelism is allowed up to 20-way per axis, so about 1,000-way FSDP × 8-way TP within each pod, and 8-way data parallelism across pods over DCN.
+
+Computed by `scripts/ch06_training.py`.
+
+</Worked>

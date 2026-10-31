@@ -1,0 +1,135 @@
+# Chapter 6 quiz. Numbers recomputed in scripts/ch06_training.py.
+- id: ch06-alpha
+  type: numeric
+  prompt: "Ironwood has 2,307 TFLOP/s BF16 and $W_\\text{ici}$ = 200 GB/s per torus axis. What is its ICI intensity $\\alpha = C/W_\\text{ici}$?"
+  answer: 11535
+  tolerance: 0.02
+  explanation: "$2.307\\times10^{15} / 2\\times10^{11} = 11{,}535$, about 4.5× v5p's 2,550 (book) because FLOPs grew 5× and per-link ICI did not."
+  source: "D-7x"
+
+- id: ch06-dp
+  type: numeric
+  prompt: "On v5p ($\\alpha$ = 2,550), the data-parallel axis spans all three torus axes. What is the minimum batch per chip, in tokens, for data parallelism or FSDP to be compute-bound?"
+  answer: 850
+  tolerance: 0.02
+  unit: tokens
+  explanation: "$B/X > \\alpha / M_X = 2550 / 3 = 850$. For a full 8,960-chip pod that is a 7.6M-token batch."
+  source: "SB5 #data-parallelism"
+
+- id: ch06-fsdp-same
+  type: mcq
+  prompt: "Why does FSDP have the same compute-bound condition as plain data parallelism?"
+  options:
+    - text: "It replaces each gradient AllReduce with a ReduceScatter plus an AllGather of the weights, which move the same bytes."
+      correct: true
+      why: "An AllReduce costs a ReduceScatter plus an AllGather. FSDP moves the same total while also sharding memory, so the book concludes you can basically always use ZeRO-3."
+    - text: "FSDP does not communicate weights at all."
+      why: "It AllGathers each layer's weights before use."
+    - text: "FSDP uses DCN instead of ICI."
+      why: "Within a slice it uses ICI, like data parallelism."
+    - text: "It does not; FSDP needs twice the batch."
+      why: "The byte counts match, so the thresholds match."
+  source: "SB5 #fully-sharded-data-parallelism-fsdp"
+
+- id: ch06-tp-limit
+  type: numeric
+  prompt: "LLaMA-3-70B has $F$ = 28,672. On v5p ($\\alpha$ = 2,550), up to how many ways can tensor parallelism over one torus axis stay compute-bound?"
+  answer: 11.2
+  tolerance: 0.03
+  unit: ways
+  explanation: "$Y < F / \\alpha = 28{,}672 / 2{,}550 = 11.2$, so 8-way in practice. The bound does not depend on batch. On Ironwood it is $28{,}672 / 11{,}535 = 2.5$."
+  source: "SB5 #tensor-parallelism"
+
+- id: ch06-quantize-tp
+  type: mcq
+  prompt: "Does moving tensor-parallel activations to fp8 relax the tensor-parallelism limit $Y < F/\\alpha$?"
+  options:
+    - text: "No: fp8 halves the bytes moved but also doubles C, so FLOPs per byte moved is unchanged."
+      correct: true
+      why: "The book makes the same point for int8: C/W doubles to 5,100 while bytes halve."
+    - text: "Yes, it doubles the limit."
+      why: "Only if the math stayed bf16 while activations moved in fp8, which is not the usual setup."
+    - text: "Yes, because fp8 collectives use SparseCores."
+      why: "Collectives run over ICI regardless of dtype."
+    - text: "No, because TP is always communication-bound."
+      why: "TP is compute-bound below $F/\\alpha$ ways."
+  source: "SB5 #tensor-parallelism"
+
+- id: ch06-fsdp-tp-threshold
+  type: numeric
+  prompt: "With FSDP over 2 torus axes and TP over 1 on v5p ($\\alpha$ = 2,550), for LLaMA-3-70B ($F$ = 28,672), what is the minimum batch per chip, in tokens, for mixed FSDP+TP to be compute-bound?"
+  answer: 113
+  tolerance: 0.03
+  unit: tokens
+  explanation: "$\\alpha^2 / (M_X M_Y F) = 2550^2 / (2 \\cdot 28672) = 113$, about 8× below FSDP alone across 3 axes (850)."
+  source: "SB5 #combining-fsdp-and-tensor-parallelism"
+
+- id: ch06-xopt
+  type: numeric
+  prompt: "For LLaMA-3-70B on a v5p pod: B = 4,194,304 tokens, N = 8,960 chips, F = 28,672, $M_X/M_Y = 2$. What is $X_\\text{opt} = \\sqrt{(B/F)(M_X/M_Y)N}$?"
+  answer: 1619
+  tolerance: 0.03
+  explanation: "$\\sqrt{(4.19\\times10^6/28672) \\cdot 2 \\cdot 8960} = 1{,}619$, so about 2,048-way FSDP × 4-way TP."
+  adapted_from: SB6 sharding Q&A
+  source: "SB6 #how-to-shard-llama-3-70b-for-training"
+
+- id: ch06-ironwood-pod
+  type: scenario
+  prompt: "The same 4M-token LLaMA-3-70B batch runs on a full 9,216-chip Ironwood pod with the best FSDP/TP split. What does the book's model predict?"
+  options:
+    - text: "Communication-bound: 455 tokens per chip against about 2,320 needed. Compute-bound only up to about 1,800 chips."
+      correct: true
+      why: "$\\alpha = 11{,}535$ gives $\\alpha^2/(2F) \\approx 2{,}320$. Raising the batch to 16M would allow about 7,200 chips."
+    - text: "Compute-bound, like on v5p."
+      why: "v5p needs 113 tokens per chip; Ironwood needs 2,320, because its FLOPs grew 5× and per-link ICI did not."
+    - text: "Memory-bound: 70B does not fit."
+      why: "Spread over 9,216 chips the state is about 1.3 GB per chip."
+    - text: "DCN-bound."
+      why: "One pod is one ICI slice; no DCN is involved."
+  source: "D-7x"
+
+- id: ch06-dcn
+  type: numeric
+  prompt: "On v5p, each chip has 6.25 GB/s of DCN bandwidth and 459 TFLOP/s. For pure data parallelism across pods, what is the minimum batch per pod, in tokens?"
+  answer: 73440
+  tolerance: 0.02
+  unit: tokens
+  explanation: "$C / W_\\text{dcn} = 4.59\\times10^{14} / 6.25\\times10^{9} = 73{,}440$. On Ironwood, at 12.5 GB/s, about 185,000."
+  source: "SB5 #scaling-across-pods"
+
+- id: ch06-pp-gpu
+  type: mcq
+  prompt: "Meta trained LLaMA-3 405B on 16,384 H100s with 8-way TP, 16-way PP and 128-way DP. Why is pipeline parallelism central there?"
+  options:
+    - text: "High-bandwidth collectives stop at the 8-GPU NVLink node, so model parallelism beyond 8 ways must move little data between nodes; pipelining moves only activations between adjacent stages."
+      correct: true
+      why: "Across nodes each H100 has about 50 GB/s. TP across nodes would be communication-bound, and pipelining also cuts the DP AllReduce volume per GPU."
+    - text: "H100s cannot run FSDP."
+      why: "FSDP runs on GPUs; it costs the same bytes as DP across the slower scale-out network."
+    - text: "Pipelining improves MFU on any hardware."
+      why: "Pipelining adds a bubble. It is used when its low communication outweighs that cost."
+    - text: "TPUs do not support pipeline parallelism."
+      why: "GSPMD expresses pipelining as sharding over a stage axis, and MaxText has a stage axis. It is less often needed."
+  source: "P-Llama3"
+
+- id: ch06-sb5q3
+  type: scenario
+  prompt: "LLaMA-2-13B, 3M-token batch, 4,096 v5p chips. Pure FSDP fits in memory. Is it compute-bound?"
+  options:
+    - text: "No: it needs 850 × 4,096 = 3.48M tokens and has 3M. Use FSDP+TP (threshold 235 per chip), about 1,024 × 4."
+      correct: true
+      why: "Per chip there are 732 tokens, above 235 for FSDP+TP. Step time about 300 ms at 40% MFU."
+    - text: "Yes, any batch above 2,550 total tokens suffices."
+      why: "The threshold is per chip, not total."
+    - text: "No, and nothing helps: the batch is too small."
+      why: "FSDP+TP lowers the per-chip requirement from 850 to 235."
+    - text: "Yes, because the model is small."
+      why: "Model size does not enter the FSDP condition; batch per chip does."
+  adapted_from: SB5 Q3
+  source: "SB5 #some-problems-to-work"
+
+- id: ch06-explain
+  type: free
+  prompt: "Explain to a GPU training lead why a training job that is compute-bound on a full v5p pod can be communication-bound on a full Ironwood pod, and what they could do about it."
+  model_answer: "Every training scheme's condition depends on alpha = FLOP/s per byte/s of ICI per axis. v5p has about 2,550 (book) and Ironwood about 11,500: Ironwood has 5× the FLOPs per chip with the same per-link ICI bandwidth. Mixed FSDP+TP needs alpha²/(M_X M_Y F) tokens per chip, which for LLaMA-3-70B rises from 113 to about 2,320. A 4M-token batch over 9,216 chips is 455 per chip, so the book's model predicts the step is about 2× communication-bound, and compute-bound only up to about 1,800 chips. Options: raise the global batch (16M allows about 7,200 chips); use fewer chips per job and more jobs or slices with data parallelism over DCN, which is cheap at about 185k tokens per slice; add pipeline stages, which move little data and suit high alpha; rely on overlap (collective matmul, async collectives) to hide part of the gap. TPU 8t's 2× ICI moves alpha back toward v5p's level."
+  source: "SB5 #combining-fsdp-and-tensor-parallelism"

@@ -289,6 +289,7 @@ TorchTPU performance claims: [T-pt] reports Qwen3-MoE-235B on 8,192 TPU v7 chips
 | P-Megatron | Shoeybi et al., "Megatron-LM," 2019 | https://arxiv.org/abs/1909.08053 |
 | P-SeqPar | Korthikanti et al., "Reducing Activation Recomputation in Large Transformer Models," 2022 | https://arxiv.org/abs/2205.05198 |
 | P-Flux | Chang et al., "FLUX: Fast Software-based Communication Overlap on GPUs," 2024 | https://arxiv.org/abs/2406.06858 |
+| P-Llama3 | Llama Team, Meta, "The Llama 3 Herd of Models," 2024. Table 3 (8B/70B/405B shapes), Table 4 (16,384-GPU parallelism: TP 8, PP 16, DP 128, 41% MFU), §3.4 (batch 4M→8M→16M tokens; 405B on 15.6T tokens, 3.8e25 FLOPs). Read 2026-10-23 | https://arxiv.org/abs/2407.21783 |
 | N-nccltests | NCCL-tests PERFORMANCE.md (algbw vs busbw) | https://github.com/NVIDIA/nccl-tests/blob/master/doc/PERFORMANCE.md |
 | N-ncclenv | NCCL env docs (NCCL_ALGO: Ring, Tree, NVLS, PAT…) | https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/env.html |
 | N-nccl24 | "Massively Scale Your Deep Learning Training with NCCL 2.4" (double binary trees) | https://developer.nvidia.com/blog/massively-scale-deep-learning-training-nccl-2-4 |

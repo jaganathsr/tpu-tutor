@@ -61,4 +61,6 @@ LLAMA3_70B = Model("LLaMA-3-70B", L=80, D=8192, F=28672, N=64, K=8, H=128, V=128
 LLAMA2_13B = Model("LLaMA-2-13B", L=40, D=5120, F=13824, N=40, K=40, H=128, V=32000, src="SB5")
 SB7_DENSE = Model("Scaling Book ch.7 model", L=64, D=4096, F=16384, N=32, K=8, H=256, V=32128, tied=True, src="SB7")
 SB7_MOE = Model("ch.7 model as MoE (E=16, k=2)", L=64, D=4096, F=16384, N=32, K=8, H=256, V=32128, E=16, k=2, tied=True, src="SB7")
-MODELS = [LLAMA3_70B, LLAMA2_13B, SB7_DENSE, SB7_MOE]
+LLAMA3_8B = Model("LLaMA-3-8B", L=32, D=4096, F=14336, N=32, K=8, H=128, V=128256, src="P-Llama3 Table 3")
+LLAMA3_405B = Model("LLaMA-3-405B", L=126, D=16384, F=53248, N=128, K=8, H=128, V=128256, src="P-Llama3 Table 3")
+MODELS = [LLAMA3_8B, LLAMA3_70B, LLAMA3_405B, LLAMA2_13B, SB7_DENSE, SB7_MOE]

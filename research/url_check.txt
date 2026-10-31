@@ -1,4 +1,4 @@
-# URL check 2026-10-23 (151 URLs)
+# URL check 2026-10-23 (152 URLs)
 200	https://arxiv.org/abs/1704.04760
 200	https://arxiv.org/abs/1909.08053
 200	https://arxiv.org/abs/2105.04663
@@ -8,6 +8,7 @@
 200	https://arxiv.org/abs/2211.05102
 200	https://arxiv.org/abs/2304.01433
 200	https://arxiv.org/abs/2406.06858
+200	https://arxiv.org/abs/2407.21783
 200	https://arxiv.org/abs/2604.15464
 200	https://aws.amazon.com/about-aws/whats-new/2025/12/amazon-ec2-trn3-ultraservers/
 200	https://aws.amazon.com/ec2/instance-types/trn3/
@@ -140,7 +141,6 @@
 200	https://www.nvidia.com/en-us/data-center/h200/
 200	https://www.nvidia.com/en-us/data-center/hgx/
 200	https://www.nvidia.com/en-us/data-center/vera-rubin-nvl72/
-200	https://www.servethehome.com/google-ironwood-tpu-swings-for-reasoning-model-leadership-at-hot-chips-2025/
 200	https://www.theregister.com/2025/12/02/amazon_nvidia_trainium/ -> https://www.theregister.com/special-features/2025/12/02/amazon-to-fuse-nvidias-nvlink-into-trainium4-accelerators/2071381
 200	https://www.tomshardware.com/tech-industry/semiconductors/google-splits-its-tpu-into-two-chips-for-the-first-time-with-training-and-inference-variants
 200	https://www.usenix.org/conference/nsdi24/presentation/zu
@@ -150,3 +150,4 @@
 403	https://doi.org/10.1145/3360307
 403	https://doi.org/10.1145/3567955.3567959
 403	https://doi.org/10.1145/3603269.3604836
+500	https://www.servethehome.com/google-ironwood-tpu-swings-for-reasoning-model-leadership-at-hot-chips-2025/

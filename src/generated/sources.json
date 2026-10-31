@@ -902,6 +902,13 @@
   "url": "https://arxiv.org/abs/2406.06858",
   "section": "GPU parallelism and collectives literature"
  },
+ "P-Llama3": {
+  "id": "P-Llama3",
+  "title": "Llama Team, Meta, \"The Llama 3 Herd of Models\"",
+  "full": "Llama Team, Meta, \"The Llama 3 Herd of Models,\" 2024. Table 3 (8B/70B/405B shapes), Table 4 (16,384-GPU parallelism: TP 8, PP 16, DP 128, 41% MFU), §3.4 (batch 4M→8M→16M tokens; 405B on 15.6T tokens, 3.8e25 FLOPs). Read 2026-10-23",
+  "url": "https://arxiv.org/abs/2407.21783",
+  "section": "GPU parallelism and collectives literature"
+ },
  "N-nccltests": {
   "id": "N-nccltests",
   "title": "NCCL-tests PERFORMANCE.md",

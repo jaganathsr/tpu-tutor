@@ -7,7 +7,9 @@ export interface ModelCfg {
 }
 
 export const PRESETS: ModelCfg[] = [
+  { name: 'LLaMA-3-8B', L: 32, D: 4096, F: 14336, N: 32, K: 8, H: 128, V: 128256, E: 1, k: 1, tied: false, src: 'P-Llama3' },
   { name: 'LLaMA-3-70B', L: 80, D: 8192, F: 28672, N: 64, K: 8, H: 128, V: 128256, E: 1, k: 1, tied: false, src: 'SB6' },
+  { name: 'LLaMA-3-405B', L: 126, D: 16384, F: 53248, N: 128, K: 8, H: 128, V: 128256, E: 1, k: 1, tied: false, src: 'P-Llama3' },
   { name: 'LLaMA-2-13B', L: 40, D: 5120, F: 13824, N: 40, K: 40, H: 128, V: 32000, E: 1, k: 1, tied: false, src: 'SB5' },
   { name: 'Scaling Book ch. 7 model (18B)', L: 64, D: 4096, F: 16384, N: 32, K: 8, H: 256, V: 32128, E: 1, k: 1, tied: true, src: 'SB7' },
   { name: 'Ch. 7 model as MoE (E=16, k=2)', L: 64, D: 4096, F: 16384, N: 32, K: 8, H: 256, V: 32128, E: 16, k: 2, tied: true, src: 'SB7' },

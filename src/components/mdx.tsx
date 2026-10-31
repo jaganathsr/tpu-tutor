@@ -11,6 +11,7 @@ import { TorusExplorer } from '../interactives/TorusExplorer';
 import { ModelCalc } from '../interactives/ModelCalc';
 import { ShardingSandbox } from '../interactives/ShardingSandbox';
 import { CollectiveViz } from '../interactives/CollectiveViz';
+import { MeshPlanner } from '../interactives/MeshPlanner';
 
 type Src = { id: string; title: string; url: string; section: string };
 const SRC = sources as Record<string, Src>;
@@ -191,4 +192,5 @@ export const mdxComponents = {
   ModelCalc,
   ShardingSandbox,
   CollectiveViz,
+  MeshPlanner,
 };

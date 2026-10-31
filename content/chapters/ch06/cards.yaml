@@ -1,0 +1,81 @@
+# Chapter 6 flashcards.
+- id: ch06-c-alpha
+  front: "What is α in the training rooflines, and its value on v5p and Ironwood?"
+  back: "$C / W_\\text{ici}$ per axis. v5p 2,550 (book) or 2,295 (docs); Ironwood 11,535; TPU 8t about 2,490 (provisional)."
+  source: derived
+- id: ch06-c-dp
+  front: Data parallelism compute-bound condition?
+  back: "$B/X > \\alpha / M_X$: batch per chip above α divided by axes spanned. v5p: 2,550 on 1 axis, 850 on 3."
+  source: SB5
+- id: ch06-c-dp-mem
+  front: Largest model plain data parallelism can train on a v5p chip?
+  back: "About 9B parameters: 10 bytes per parameter in 96 GB."
+  source: SB5
+- id: ch06-c-fsdp
+  front: FSDP's compute-bound condition, and the book's verdict?
+  back: "Same as data parallelism (RS + AG = AR). 'We can basically always do ZeRO-3.'"
+  source: SB5
+- id: ch06-c-tp
+  front: Tensor parallelism compute-bound condition?
+  back: "$Y < M_Y F / \\alpha$, independent of batch. LLaMA-3-70B on v5p: about 11 per axis (8 in practice); on Ironwood about 2.5."
+  source: SB5, derived
+- id: ch06-c-tp-quant
+  front: Does fp8 or int8 relax the TP limit?
+  back: "No. Bytes halve and C doubles, so α per byte is unchanged."
+  source: SB5
+- id: ch06-c-fsdp-tp
+  front: Mixed FSDP+TP threshold and optimal FSDP degree?
+  back: "$B/N > \\alpha^2/(M_X M_Y F)$; $X_\\text{opt} = \\sqrt{(B/F)(M_X/M_Y)N}$. v5p, F = 28,672: 113 tokens per chip."
+  source: SB5
+- id: ch06-c-llama-v5p
+  front: Book's plan for LLaMA-3-70B on a v5p pod?
+  back: "4M-token batch, 468 tokens per chip, threshold 113, X_opt 1,618: about 2,048 FSDP × 4 TP. About 44 days at 40% MFU."
+  source: SB6
+- id: ch06-c-llama-iw
+  front: Same job on a full Ironwood pod?
+  back: "455 tokens per chip against about 2,320 needed: communication-bound by about 2×. Compute-bound up to about 1,800 chips at 4M tokens, about 7,200 at 16M (derived)."
+  source: derived
+- id: ch06-c-why-iw
+  front: Why is Ironwood's α so high?
+  back: "5× v5p's BF16 FLOPs per chip with the same 100 GB/s per ICI link per direction."
+  source: D-7x
+- id: ch06-c-8t
+  front: How does TPU 8t change α?
+  back: "2× Ironwood ICI with a provisional BF16 of 996 TFLOP/s gives α of about 2,490, back to v5p's level."
+  source: G-8dd, J-hw
+- id: ch06-c-dcn
+  front: Cross-pod data parallelism condition?
+  back: "Batch per slice > $C/W_\\text{dcn}$: 73,440 tokens on v5p (6.25 GB/s per chip), about 185,000 on Ironwood (12.5 GB/s)."
+  source: SB5, derived
+- id: ch06-c-pp-tpu
+  front: Why is pipelining 'somewhat less essential on TPUs'?
+  back: "A pod gives thousands of chips at full ICI bandwidth, so FSDP and TP inside one ICI domain can carry the job. On GPUs high-bandwidth links stop at 8 or 72."
+  source: SB5
+- id: ch06-c-llama3-gpu
+  front: LLaMA-3 405B's GPU configuration?
+  back: "16,384 H100s: TP 8 × PP 16 × DP 128, 16M-token batch, 41% BF16 MFU (43% on 8,192 GPUs)."
+  source: P-Llama3
+- id: ch06-c-gpu-alpha
+  front: H100 α values for the same rooflines?
+  back: "About 2,200 in an NVLink node (450 GB/s) and 2,475 across nodes (400 GB/s per node). B200 across nodes: 5,625."
+  source: SB12
+- id: ch06-c-deepseek
+  front: DeepSeek-V3's training parallelism?
+  back: "2,048 H800s: 64-way expert parallelism, 16-way pipeline, 2-way ZeRO-1 data parallelism."
+  source: SB12
+- id: ch06-c-maxtext
+  front: MaxText defaults for parallelism?
+  back: "ici_fsdp_parallelism: -1 (FSDP fills the slice); dcn_data_parallelism: -1 (DP across slices); logical_axis_rules map named dimensions to mesh axes."
+  source: R-maxtext
+- id: ch06-c-405b
+  front: LLaMA-3-405B shape and training compute?
+  back: "126 layers, D 16,384, F 53,248, 128 heads, 8 KV heads; 406B parameters; 15.6T tokens, 3.8e25 FLOPs."
+  source: P-Llama3
+- id: ch06-c-405b-plan
+  front: LLaMA-3-405B on 8 v5p pods (derived)?
+  back: "About 33 days at 40% MFU. 16M batch: 234 tokens per chip against threshold 61. About 1,000 FSDP × 8 TP per pod, 8-way DP across pods."
+  source: derived
+- id: ch06-c-fixes
+  front: Options when Ironwood training is communication-bound?
+  back: "Larger global batch; fewer chips per slice with DP over DCN; pipeline stages; collective matmul and async collectives to overlap."
+  source: derived
