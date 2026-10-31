@@ -1,0 +1,179 @@
+---
+objectives:
+  - I can describe how TPU serving got from JetStream through PyTorch/XLA and tpu-inference to the October 2026 split, and say which path to use for a new PyTorch or JAX port.
+  - I can explain what torchax does to a torch.nn.Linear call, why tpu-inference needs the model as a pure function that returns its KV cache, and where the code ends up as HLO.
+  - I can explain how continuous batching survives a compiler that wants static shapes — padded shape buckets compiled ahead, a flattened token batch, and Ragged Paged Attention's three sub-kernels.
+  - I can read the tpu-inference KV-cache layout and explain its packing dimension from (8,128) tiling.
+  - I can map tpu-inference's mesh axes to the decode sharding rules of Chapter 7.
+  - I can size a deployment from the Scaling Book's LLaMA-3-70B serving analysis, and solve the book's 405B problem under a latency limit.
+teachback:
+  - Explain to a vLLM-on-CUDA engineer how continuous batching works when every shape must be known at compile time.
+  - What does torchax do to a torch.nn.Linear call, and where does it end up?
+  - Why does the KV-cache tensor in tpu-inference have a 'packing' dimension?
+  - You are porting a new PyTorch model to TPU this month. Which serving path do you choose and why?
+sources:
+  - { id: B-vllmtpu }
+  - { id: R-tpuinf, label: "README, runner/, layers/common/sharding.py, kernels/" }
+  - { id: R-torchax-guide }
+  - { id: R-torchax }
+  - { id: P-RPA }
+  - { id: R-vllm-torchtpu }
+  - { id: T-engines }
+  - { id: T-xla }
+  - { id: R-jetstream }
+  - { id: R-qwix }
+  - { id: X-tiled }
+  - { id: SB7, anchor: "#lets-look-at-an-implementation-jetstream", label: "JetStream" }
+  - { id: SB7, anchor: "#continuous-batching", label: "Continuous batching" }
+  - { id: SB8, anchor: "#whats-the-llama-serving-story", label: "LLaMA serving story" }
+  - { id: SB8, anchor: "#visualizing-the-latency-throughput-tradeoff", label: "Latency against throughput" }
+  - { id: SB8, anchor: "#worked-problems", label: "Problems" }
+---
+
+Chapter 7 derived what a serving system should do. This chapter is about the software that does it on TPU, which changed three times in 18 months. It ends with the Scaling Book's serving case study.
+
+<Note>
+This chapter touches your current work directly. If you are porting a PyTorch model through tpu-inference's torchax path, that path still works. Since 2026-10-20, though, new PyTorch-native TPU serving is in a separate project, vllm-torchtpu, built on TorchTPU <Cite id="R-tpuinf" /> <Cite id="R-vllm-torchtpu" />.
+</Note>
+
+## How TPU serving got here
+
+- **JetStream (2024–2025).** Google's engine, with prefill and generate engines on separate slices and an interface of `prefill`, `insert` and `generate` <Cite id="SB7" at="#lets-look-at-an-implementation-jetstream" />. Archived on 2026-02-01; its functions moved to vLLM TPU <Cite id="R-jetstream" />.
+- **vLLM on PyTorch/XLA (to 2025).** vLLM's first TPU backend ran PyTorch through PyTorch/XLA's lazy tensors. PyTorch/XLA is now deprecated, and its repository is archived on 2026-11-15 <Cite id="T-xla" />.
+- **tpu-inference, a unified JAX backend (October 2025).** One lowering path for all models: JAX-native models where they exist, and upstream vLLM PyTorch models through torchax otherwise. Against the PyTorch/XLA backend, Google reported 3.6× on Llama-3.1-8B on one v6e chip and 2.1× on 70B on eight. About 20% of the gain came from JAX lowering and about 10% from Ragged Paged Attention v3 over v2 <Cite id="B-vllmtpu" />.
+- **The split (October 2026).** tpu-inference is being renamed vLLM JAX and focuses on JAX (Flax NNX) models. PyTorch model definitions get **vllm-torchtpu**, described as "the recommended path for serving PyTorch model definitions on TPU". SGLang made the same split <Cite id="R-tpuinf" /> <Cite id="T-engines" />.
+
+<Interactive caption={<><b>Three paths to a TPU, October 2026.</b> All three share the upstream vLLM scheduler above and Pallas kernels, XLA and libtpu below. They differ in how the model's Python becomes a compiled program. Chapter 9 explains TorchTPU's path in detail.</>}>
+  <ServingStackDiagram />
+</Interactive>
+
+**Which path for a new port.**
+
+- **A JAX implementation of the model exists in vLLM JAX:** use it. tpu-inference picks it by default (`MODEL_IMPL_TYPE=auto` resolves to `flax_nnx`) <Cite id="R-tpuinf" />. These implementations are written for TPU sharding and kernels.
+- **You are bringing PyTorch model code:** vllm-torchtpu is now the recommended path. It runs upstream vLLM model definitions through `torch.compile` on TorchTPU, with TPU kernels inserted as custom ops <Cite id="R-vllm-torchtpu" />.
+- **You have an existing torchax port:** it continues to run (`MODEL_IMPL_TYPE=vllm`). Google's blog found torchax-lowered and hand-written JAX models performed about the same <Cite id="B-vllmtpu" />, but new PyTorch work is going to vllm-torchtpu.
+
+## The scheduler is vLLM's
+
+Neither TPU backend replaces vLLM's engine. The API server, the v1 scheduler that implements continuous batching, the KV block manager and prefix caching are upstream vLLM <Cite id="R-tpuinf" /> <Cite id="T-engines" />. The TPU code supplies a platform plugin, a worker and a model runner. In tpu-inference the runner directory has a `tpu_runner`, a `kv_cache_manager`, a `block_table`, a `persistent_batch_manager`, a `compilation_manager` and managers for speculative and structured decoding <Cite id="R-tpuinf" />.
+
+<GpuAnalogy>
+<p>If you know vLLM on CUDA, you already know the top half of the TPU stack. Scheduling, preemption, paged KV blocks and prefix caching behave the same. The differences are all below the scheduler: how the model is compiled, how shapes are fixed, and which attention kernel reads the paged cache.</p>
+</GpuAnalogy>
+
+## torchax: PyTorch code, JAX execution
+
+torchax lets PyTorch model code run as JAX <Cite id="R-torchax" />:
+
+- A `torchax.tensor.Tensor` is a `torch.Tensor` subclass that holds a `jax.Array`.
+- It overrides `__torch_dispatch__`. When PyTorch dispatches an ATen operation, such as the `aten::mm` inside `torch.nn.Linear`, torchax unwraps the JAX arrays, runs a JAX implementation from its op registry (a `jnp` or `lax` call), and wraps the result.
+- Under `jax.jit`, those JAX calls are traced into a jaxpr like any other JAX code, lowered to StableHLO and compiled by XLA.
+
+A Linear layer becomes a `jnp.matmul` in a jaxpr, then a `dot_general` in HLO, then an MXU fusion in the compiled program. JAX shardings, Pallas kernels and Qwix all apply to it.
+
+tpu-inference wraps a PyTorch model in what its developer guide calls a "sandwich" <Cite id="R-torchax-guide" />:
+
+- The middle is upstream vLLM's PyTorch model code.
+- Around it is JAX: inputs, the sampler, the KV cache and the Ragged Paged Attention kernel.
+- `torch_view` and `jax_view` convert at the boundaries.
+
+The worker calls one pure function, `model_fn(weights, kv_caches, inputs)`. PyTorch modules are made pure with `torch.func.functional_call`, and the KV cache is passed in and **returned**, functional-update style, rather than mutated in place. The guide's summary: "torchax is JAX".
+
+<AnalogyBreaks>
+<p>On CUDA, a vLLM model mutates its KV cache in place through a custom attention op, and nothing outside notices. Under `jax.jit`, arrays are immutable values, so in-place mutation must become "return the new cache". XLA then reuses the input buffer when the cache argument is donated. Porting a model to torchax mostly means finding the places where the PyTorch code relies on mutation or Python-side state and making them explicit.</p>
+</AnalogyBreaks>
+
+## Continuous batching with static shapes
+
+Continuous batching means the set of sequences in each step changes every step: new requests join, finished ones leave, some are in prefill and some in decode. A TPU program is compiled for exact shapes. tpu-inference reconciles the two in three ways.
+
+**Flatten the batch into tokens.** Every query token in the step, from every sequence, is packed into one array: queries are `[max_num_tokens, num_q_heads, head_dim]`. Per-sequence structure is carried in small metadata arrays <Cite id="R-tpuinf" s="kernels/ragged_paged_attention/v3" />:
+
+- `cu_q_lens`, cumulative query lengths that mark where each sequence's tokens start;
+- `kv_lens`, each sequence's cache length;
+- `page_indices`, the block table;
+- `distribution`, which counts how many sequences are decode-only, prefill-only and mixed.
+
+A decode sequence contributes one token and a prefill chunk contributes many, in the same array.
+
+**Pad to buckets and compile ahead.** The number of tokens and of sequences is padded up to one of a fixed set of bucket sizes. The `compilation_manager` compiles every bucket before serving starts, so no request waits on a compile <Cite id="R-tpuinf" />. The cost is padding waste, which the bucket spacing controls, and startup time.
+
+**Make attention handle raggedness inside the kernel.** **Ragged Paged Attention** (RPA) is a Pallas kernel that reads each sequence's KV pages through the block table and attends over that sequence's true length <Cite id="P-RPA" />. Version 3 adds three things:
+
+- It fuses the KV-cache update into the attention kernel, which "completely hides scatter latency".
+- It compiles three specialized sub-kernels, for decode-only, prefill-only and mixed batches, chosen by the `distribution` metadata <Cite id="B-vllmtpu" />.
+- The paper reports up to 86% of memory bandwidth in decode and 73% of FLOPs in prefill on Llama-3-8B on Ironwood <Cite id="P-RPA" />.
+
+<GpuAnalogy title="GPU analogy: CUDA graphs and FlashInfer">
+<p>The GPU stack has the same problem at the launch level. vLLM captures CUDA graphs for a set of padded batch sizes and replays them, and paged attention kernels such as FlashInfer handle ragged sequence lengths inside the kernel. The TPU version pads the same way. The difference is that the "graph" is the whole compiled step: there is no eager fallback for an uncaptured shape, only a recompile.</p>
+</GpuAnalogy>
+
+## The KV-cache layout
+
+Per layer, tpu-inference allocates the cache as <Cite id="R-tpuinf" s="runner/kv_cache.py" />
+
+$$
+\text{(num\_blocks, block\_size, } \lceil 2K / p \rceil, \; p, \; \text{head\_dim)}, \qquad p = \frac{32}{\text{bits per value}}
+\tag{8.1}
+$$
+
+<Gloss>Pages of tokens; within a page, K and V heads interleaved and packed p to a 32-bit word.</Gloss>
+
+K and V are interleaved along the head axis (the factor 2), then grouped in fours for 8-bit values or pairs for bf16. The packing dimension exists because of Chapter 2's tiling. XLA stores bf16 as `(8,128)(2,1)` and 8-bit types as `(8,128)(4,1)`, two or four values per 32-bit sublane <Cite id="X-tiled" />. Laying the cache out that way lets the kernel load whole 32-bit words that already hold the right K and V values. The DMA then moves full tiles, and no relayout is needed between the cache and the MXU.
+
+## Sharding in tpu-inference
+
+tpu-inference defines its mesh axes as `data`, `attn_dp`, `attn_dp_expert`, `expert`, `model`, `dcp` and `pcp`. The default is a 2D mesh of `('data', 'model')`, in which attention heads, KV heads, the MLP's tensor dimension and experts all shard over `model`, and the batch over `data` <Cite id="R-tpuinf" s="layers/common/sharding.py" />. That is Chapter 7's decode sharding:
+
+- model parallelism over `model`;
+- replicas over `data`;
+- `dcp` and `pcp` for decode and prefill context parallelism when sequences are long;
+- `expert` for expert parallelism. The source does not document `attn_dp`; its name suggests data parallelism for attention, the usual answer when a model has fewer KV heads than the model axis has chips <Unverified />.
+
+Multi-slice deployments set `NUM_SLICES`.
+
+## Quantization and MoE
+
+tpu-inference loads checkpoints already quantized in several formats: MXFP4, compressed-tensors FP8 and INT8, AWQ INT4 and NVIDIA ModelOpt NVFP4. It can also quantize JAX models at load time with Qwix rules (Chapter 7) <Cite id="R-tpuinf" />. For MoE it carries Pallas kernels for fused MoE and grouped matmul (megablox), and SparseCore kernels for the ragged gathers and scatters of token routing <Cite id="R-tpuinf" s="kernels/" />.
+
+vllm-torchtpu provides the same kernels as custom ops inside its compiled graph <Cite id="R-vllm-torchtpu" /> <Cite id="T-engines" />:
+
+- RPA, dense and sparse MLA, Gated DeltaNet, and fused MoE with SparseCore offload;
+- FP8, INT8 and MXFP4 quantized matmuls and FP8 KV cache;
+- TP, DP, PP, EP and context parallelism;
+- disaggregated prefill and decode through TPU Sync, which reads the device buffers behind PyTorch tensors directly;
+- KV offload to host DRAM or Managed Lustre.
+
+Google also describes a Pallas "megakernel" that runs a whole decode step of Kimi K3 as a single kernel.
+
+## Case study: serving LLaMA-3-70B
+
+The Scaling Book's Chapter 8 works through serving LLaMA-3-70B on v5e, chosen because it was the cheapest TPU per FLOP at the time <Cite id="SB8" at="#whats-the-llama-serving-story" />:
+
+| Chip | bf16 FLOP/s | $/hour (Feb 2025) | FLOPs per $ |
+|---|---|---|---|
+| H100 | 9.9e14 | 10.8 | 3.3e17 |
+| v5p | 4.59e14 | 4.2 | 3.9e17 |
+| v5e | 1.97e14 | 1.2 | 5.9e17 |
+
+The book's steps, with int8 weights and bf16 math:
+
+- **KV cache:** $2 \cdot 8 \cdot 128 \cdot 80 = 164$ kB per token in int8; the book rounds to 160 kB. A batch of 32 at 8k context needs 113 GB with the weights, so 7 chips minimum: a 4×2.
+- **Step time on a 4×2:** 113 GB over 8 × 820 GB/s = 17 ms, 1,860 tokens/s, about 232 tokens/s per chip. On a 4×4: 8.6 ms, same per-chip throughput. The book gives 17 ms and 235.
+- **Sharding check:** bf16 weights on a 4×8 at batch 64 give $T_\text{ICI}$ = 12 µs, $T_\text{HBM}$ = 18 µs and $T_\text{math}$ = 5 µs. HBM-bound, so 32-way model parallelism lowers latency without raising throughput.
+- **The smallest slice is not the cheapest.** At 8k context the KV cache, not the weights, limits batch. Doubling the slice more than doubles the batch that fits and raises throughput per chip by about 1.6× in the book's table.
+- **Latency against cost.** In the book's interactive plot, doubling per-token latency can cut cost per token by about 100×, and at any context above 2,048 tokens KV loading takes longer than FLOPs <Cite id="SB8" at="#visualizing-the-latency-throughput-tradeoff" />.
+
+<Worked title="LLaMA-3-405B under 15 ms per token on v5e (derived; no book answer)">
+
+The Scaling Book's Chapter 8, problem 3, gives no answer <Cite id="SB8" at="#worked-problems" />: serve LLaMA-3-405B on v5e with int8 weights and bf16 math, at most 15 ms per token, with maximum throughput. Assume 8k context and int8 KV, 258 kB per token. From `scripts/ch08_serving.py` <Derived />:
+
+- **Floor:** reading 406 GB of weights must take under 15 ms, so at least 36 chips (13.8 ms). That leaves room for only about 17 sequences.
+- **64 chips (an 8×8):** the floor is 7.7 ms. Formula 7.2 allows a batch of about 143 under 15 ms.
+- **The ICI check binds first.** At 64-way model parallelism, Chapter 7's condition $Y < F/(B \beta_\text{ici})$ with $F = 53{,}248$ and $\beta_\text{ici} \approx 8$ caps the batch near 100. A v5e 8×8 slice also has no wraparound, which makes those collectives slower still.
+- **At batch 100:** a 4.0 ms KV read plus the 7.7 ms weight read, about 12 ms per step, about 130 tokens/s per chip.
+- **Scaling out:** at 128 or 256 chips, throughput per chip levels off near 149 tokens/s under the deadline, since the step becomes compute-bound. Fewer, larger replicas only add ICI pressure. The answer is replicas of 64 chips each.
+
+For comparison, the same model in fp8 on 8 Ironwood chips has a weight-read floor of 6.9 ms; on 16 chips, 3.4 ms.
+
+</Worked>

@@ -1,0 +1,81 @@
+# Chapter 8 flashcards.
+- id: ch08-c-history
+  front: TPU serving stack timeline?
+  back: "JetStream (archived 2026-02-01); vLLM on PyTorch/XLA (deprecated); tpu-inference unified JAX backend (Oct 2025); split into vLLM JAX and vllm-torchtpu (Oct 2026)."
+  source: R-tpuinf, T-engines
+- id: ch08-c-unified-gain
+  front: tpu-inference's reported gains over the PyTorch/XLA backend?
+  back: "3.6× on Llama-3.1-8B (v6e-1), 2.1× on 70B (v6e-8); about 20% from JAX lowering, about 10% from RPA v3 over v2."
+  source: B-vllmtpu
+- id: ch08-c-recommend
+  front: Recommended path for a new PyTorch model on TPU, October 2026?
+  back: "vllm-torchtpu on TorchTPU (torch.compile). The torchax path in tpu-inference still works; JAX-native models stay in vLLM JAX."
+  source: R-vllm-torchtpu
+- id: ch08-c-impl
+  front: tpu-inference MODEL_IMPL_TYPE values?
+  back: "auto (default; picks flax_nnx when a JAX model exists), flax_nnx, vllm (PyTorch via torchax), jetpack (undocumented)."
+  source: R-tpuinf
+- id: ch08-c-scheduler
+  front: Which parts of vLLM are unchanged on TPU?
+  back: "API server, v1 scheduler (continuous batching), KV block manager and prefix caching. TPU code supplies the worker, runner and kernels."
+  source: R-tpuinf, T-engines
+- id: ch08-c-torchax
+  front: How does torchax run PyTorch code?
+  back: "A torch.Tensor subclass holding a jax.Array; __torch_dispatch__ maps each ATen op to a jnp/lax implementation; jax.jit traces it to StableHLO."
+  source: R-torchax
+- id: ch08-c-sandwich
+  front: What is tpu-inference's torchax 'sandwich'?
+  back: "Upstream PyTorch model code in the middle; JAX inputs, sampler, KV cache and RPA kernel around it; torch_view and jax_view at the boundaries. 'torchax is JAX'."
+  source: R-torchax-guide
+- id: ch08-c-pure
+  front: Why must the model return its KV cache?
+  back: "jax.jit works on pure functions over immutable arrays; in-place mutation becomes input plus output, and buffer donation avoids the copy."
+  source: R-torchax-guide
+- id: ch08-c-flatten
+  front: How does tpu-inference batch prefill and decode together?
+  back: "All query tokens flattened into [max_num_tokens, heads, head_dim], plus cu_q_lens, kv_lens, page_indices and a decode/prefill/mixed distribution."
+  source: R-tpuinf
+- id: ch08-c-buckets
+  front: How are static shapes kept under continuous batching?
+  back: "Token and sequence counts are padded to buckets, all compiled before serving by the compilation_manager. An unseen shape means a recompile."
+  source: R-tpuinf
+- id: ch08-c-rpa
+  front: What does Ragged Paged Attention v3 add?
+  back: "KV-cache update fused into attention (hides scatter latency); three sub-kernels for decode, prefill and mixed batches."
+  source: B-vllmtpu, P-RPA
+- id: ch08-c-rpa-results
+  front: RPA paper results on Ironwood?
+  back: "Up to 86% memory-bandwidth utilization in decode and 73% FLOPs utilization in prefill, Llama-3-8B."
+  source: P-RPA
+- id: ch08-c-kv-layout
+  front: tpu-inference KV-cache shape per layer?
+  back: "(num_blocks, block_size, ceil(2K/p), p, head_dim) with p = 32 / bits: K and V interleaved and packed into 32-bit sublanes."
+  source: R-tpuinf
+- id: ch08-c-packing-why
+  front: Why the packing dimension?
+  back: "XLA tiles bf16 as (8,128)(2,1) and 8-bit as (8,128)(4,1). Matching it lets DMAs move whole tiles with no relayout."
+  source: X-tiled
+- id: ch08-c-mesh
+  front: tpu-inference mesh axes?
+  back: "data, attn_dp, attn_dp_expert, expert, model, dcp, pcp. Default 2D ('data', 'model'): heads, KV heads, MLP and experts on model."
+  source: R-tpuinf
+- id: ch08-c-quant
+  front: Checkpoint formats tpu-inference can load?
+  back: "MXFP4, compressed-tensors FP8 and INT8, AWQ INT4, ModelOpt NVFP4; plus Qwix online quantization for JAX models."
+  source: R-tpuinf
+- id: ch08-c-torchtpu-serving
+  front: vllm-torchtpu features?
+  back: "torch.compile with Pallas kernels as custom ops (RPA, MLA, GDN, fused MoE with SparseCore); FP8/INT8/MXFP4 matmuls; FP8 KV; TP/DP/PP/EP/CP; P/D disaggregation via TPU Sync; v7x recommended."
+  source: R-vllm-torchtpu, T-engines
+- id: ch08-c-cost
+  front: FLOPs per dollar in the book's Feb 2025 table?
+  back: "v5e 5.9e17, v5p 3.9e17, H100 3.3e17. The book serves on v5e for that reason."
+  source: SB8
+- id: ch08-c-70b
+  front: LLaMA-3-70B int8 at batch 32 and 8k context on v5e?
+  back: "113 GB, fits a 4×2. 17 ms per step, about 235 tokens/s per chip. A 4×4 halves latency at the same per-chip throughput."
+  source: SB8
+- id: ch08-c-405b
+  front: LLaMA-3-405B int8 under 15 ms/token on v5e (derived)?
+  back: "At least 36 chips for the weight floor. Replicas of 64 chips: about 100 sequences before 64-way TP turns ICI-bound, about 12 ms per step, about 130 tokens/s per chip."
+  source: derived

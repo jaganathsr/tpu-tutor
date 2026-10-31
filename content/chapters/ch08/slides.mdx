@@ -1,0 +1,70 @@
+<Slide title="Three changes in 18 months">
+
+| When | Stack | Status |
+|---|---|---|
+| 2024–25 | JetStream | archived 2026-02-01 |
+| to 2025 | vLLM on PyTorch/XLA | deprecated; repo archived 2026-11-15 |
+| Oct 2025 | tpu-inference: JAX models + PyTorch via torchax | 3.6× / 2.1× over PyTorch/XLA |
+| Oct 2026 | vLLM JAX for JAX models; vllm-torchtpu for PyTorch | current |
+
+New PyTorch port: vllm-torchtpu. Existing torchax ports keep working.
+
+</Slide>
+
+<Slide title="Three paths, one scheduler">
+
+<ServingStackDiagram />
+
+</Slide>
+
+<Slide title="torchax">
+
+- `torchax.Tensor` is a `torch.Tensor` holding a `jax.Array`.
+- `__torch_dispatch__` maps each ATen op to `jnp` / `lax`; `jax.jit` traces it to StableHLO.
+- The model must be a pure function: `model_fn(weights, kv_caches, inputs) -> (kv_caches, ...)`.
+- The "sandwich": PyTorch model code inside; JAX sampler, KV cache and RPA kernel around it.
+
+</Slide>
+
+<Slide title="Continuous batching with static shapes">
+
+- Flatten every query token in the step into one array; metadata carries per-sequence structure.
+- Pad token and sequence counts to buckets; compile them all before serving.
+- Ragged Paged Attention handles true lengths inside the kernel: fused KV write, three sub-kernels (decode, prefill, mixed).
+- 86% bandwidth in decode, 73% FLOPs in prefill (Llama-3-8B, Ironwood).
+
+</Slide>
+
+<Slide title="KV cache layout">
+
+$$
+(\text{blocks}, \text{block size}, \lceil 2K/p \rceil, p, \text{head dim}), \qquad p = \frac{32}{\text{bits}}
+$$
+
+<Gloss>K and V interleaved, packed 2 (bf16) or 4 (8-bit) per 32-bit sublane: the (8,128)(2,1) and (4,1) tilings.</Gloss>
+
+Mesh: `('data', 'model')` by default; heads, KV heads, MLP and experts on model. Also `expert`, `attn_dp`, `dcp`, `pcp`.
+
+</Slide>
+
+<Slide title="Case study: LLaMA-3-70B on v5e">
+
+- int8 KV: 164 kB per token. Batch 32 at 8k: 113 GB, fits a 4×2.
+- 4×2: 17 ms per step, about 235 tokens/s per chip. 4×4: 8.6 ms, same per chip.
+- bf16 on 4×8 at batch 64: HBM 18 µs, ICI 12 µs, math 5 µs. HBM-bound.
+- Bigger slices fit disproportionately more KV: about 1.6× tokens/s per chip from doubling.
+
+</Slide>
+
+<Slide title="LLaMA-3-405B under 15 ms per token (derived)">
+
+| Slice | Weight-read floor | Limit |
+|---|---|---|
+| 36 v5e | 13.8 ms | about 17 sequences |
+| 64 v5e | 7.7 ms | ICI caps batch near 100: about 12 ms, 130 tok/s/chip |
+| 256 v5e | 1.9 ms | per-chip throughput levels off at about 149 |
+| 8 Ironwood, fp8 | 6.9 ms | — |
+
+Answer: replicas of 64 chips.
+
+</Slide>

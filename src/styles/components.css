@@ -490,3 +490,7 @@ body.deck-mode .site-footer { display: none; }
 .wide { width: calc(100% + var(--margin-col) + var(--gap)); clear: both; }
 .wide table { font-size: var(--fs-xsmall); }
 @media (max-width: 960px) { .wide { width: auto; overflow-x: auto; } }
+/* Diagrams on slides scale to the slide body; their notes are dropped. */
+.slide-body .ix { border: 0; padding: 0; }
+.slide-body .ix svg { max-height: 38cqw; width: auto; max-width: 100%; margin: 0 auto; }
+.slide-body .ix .ix-note { display: none; }

@@ -1,0 +1,154 @@
+# Chapter 8 quiz. Numbers recomputed in scripts/ch08_serving.py.
+- id: ch08-path
+  type: mcq
+  prompt: "In October 2026 you start porting a new PyTorch model definition to TPU for vLLM serving. Which path do the projects themselves recommend?"
+  options:
+    - text: "vllm-torchtpu, which runs upstream vLLM PyTorch models through torch.compile on TorchTPU."
+      correct: true
+      why: "Its README calls it the recommended path for PyTorch model definitions; tpu-inference is being renamed vLLM JAX and focuses on JAX models."
+    - text: "tpu-inference's torchax path."
+      why: "It still works and existing ports keep running, but new PyTorch-native work moved to vllm-torchtpu."
+    - text: "vLLM on PyTorch/XLA."
+      why: "PyTorch/XLA is deprecated and its repository is archived on 2026-11-15."
+    - text: "JetStream."
+      why: "Archived on 2026-02-01."
+  source: "R-vllm-torchtpu"
+
+- id: ch08-torchax
+  type: mcq
+  prompt: "What does torchax do when a torch.nn.Linear runs on a torchax tensor?"
+  options:
+    - text: "__torch_dispatch__ intercepts the ATen op, unwraps the jax.Array, runs a jnp implementation from the op registry and rewraps the result."
+      correct: true
+      why: "Under jax.jit that call is traced into a jaxpr, lowered to StableHLO and compiled by XLA like any JAX code."
+    - text: "It compiles the Linear with TorchInductor and calls the generated kernel."
+      why: "torchax does not use Inductor; it maps ATen ops to JAX."
+    - text: "It records a lazy-tensor IR graph executed at mark_step."
+      why: "That is PyTorch/XLA's design."
+    - text: "It runs the op on the host CPU and copies the result to TPU."
+      why: "The op runs as JAX on the TPU."
+  source: "R-torchax"
+
+- id: ch08-pure
+  type: mcq
+  prompt: "Why does tpu-inference require a torchax model to be called as model_fn(weights, kv_caches, inputs) that returns the new KV caches?"
+  options:
+    - text: "jax.jit traces pure functions over immutable arrays, so in-place cache mutation must become an input and an output; XLA reuses the buffer when it is donated."
+      correct: true
+      why: "The developer guide's 'sandwich' keeps JAX in charge of inputs, sampler, KV cache and the RPA kernel."
+    - text: "TPUs cannot write to HBM in place."
+      why: "The hardware can; the restriction comes from JAX's functional programming model."
+    - text: "To allow host offload of the cache."
+      why: "Offload is a separate feature."
+    - text: "Because vLLM's scheduler requires it."
+      why: "The scheduler is upstream vLLM and is unaware of the model's calling convention."
+  source: "R-torchax-guide"
+
+- id: ch08-buckets
+  type: scenario
+  prompt: "A tpu-inference server stalls for several minutes when the first request with an unusual length arrives, then runs normally. What most likely happened?"
+  options:
+    - text: "The padded shape fell outside the precompiled buckets and triggered an XLA compile."
+      correct: true
+      why: "The compilation_manager compiles every bucket before serving so this does not happen; a mismatch between the bucket configuration and the traffic causes a compile on the request path."
+    - text: "The KV cache was being paged in from host memory."
+      why: "That would recur, not happen once."
+    - text: "The OCS was reconfiguring the slice."
+      why: "Slice topology does not change while a job runs."
+    - text: "The scheduler waited for a full batch."
+      why: "Continuous batching does not wait for a full batch."
+  source: "R-tpuinf"
+
+- id: ch08-rpa
+  type: mcq
+  prompt: "Ragged Paged Attention v3 compiles three sub-kernels. What selects among them?"
+  options:
+    - text: "Metadata counting how many sequences in the step are decode-only, prefill-only and mixed."
+      correct: true
+      why: "The distribution array, alongside cu_q_lens, kv_lens and page_indices. v3 also fuses the KV-cache update into the kernel."
+    - text: "The model's number of KV heads."
+      why: "Head counts are compile-time constants, not per-step choices."
+    - text: "The TPU generation."
+      why: "Generation is fixed at compile time; the three sub-kernels serve different batch compositions."
+    - text: "Whether quantization is enabled."
+      why: "Quantization is orthogonal to the decode, prefill and mixed split."
+  source: "P-RPA"
+
+- id: ch08-rpa-results
+  type: numeric
+  prompt: "The Ragged Paged Attention paper reports what percentage of memory bandwidth utilization in decode on Llama-3-8B on Ironwood?"
+  answer: 86
+  tolerance: 0.02
+  unit: "%"
+  explanation: "Up to 86% of memory bandwidth in decode and 73% of FLOPs in prefill."
+  source: "P-RPA"
+
+- id: ch08-packing
+  type: numeric
+  prompt: "tpu-inference's KV cache has a packing dimension p = 32 / bits per value. For an fp8 KV cache, what is p?"
+  answer: 4
+  tolerance: 0.001
+  explanation: "Four 8-bit values per 32-bit sublane, matching XLA's (8,128)(4,1) tiling for 8-bit types. bf16 gives p = 2."
+  source: "X-tiled"
+
+- id: ch08-mesh
+  type: mcq
+  prompt: "In tpu-inference's default 2D mesh ('data', 'model'), what shards over 'model'?"
+  options:
+    - text: "Attention heads, KV heads, the MLP's tensor dimension and experts."
+      correct: true
+      why: "That is model parallelism for decode; 'data' carries replicas of the batch."
+    - text: "The batch only."
+      why: "That is the data axis."
+    - text: "Weights, gathered every step (FSDP)."
+      why: "FSDP in decode is a large regression; weights stay sharded over model."
+    - text: "The sequence dimension."
+      why: "Context parallelism has its own axes, dcp and pcp."
+  source: "R-tpuinf"
+
+- id: ch08-70b-step
+  type: numeric
+  prompt: "LLaMA-3-70B with int8 weights at batch 32 and 8k context needs about 113 GB with its int8 KV cache. On a v5e 4×2 (8 chips, 820 GB/s each), what is the decode step lower bound in ms?"
+  answer: 17.2
+  tolerance: 0.04
+  unit: ms
+  explanation: "113 GB / (8 × 820 GB/s) = 17.2 ms, about 1,860 tokens/s or 232 per chip. The book gives 17 ms and 235."
+  adapted_from: SB8 Q3
+  source: "SB8 #whats-the-llama-serving-story"
+
+- id: ch08-shard-4x8
+  type: scenario
+  prompt: "LLaMA-3-70B in bf16 runs at batch 64 across a v5e 4×8 (32-way model parallelism). Per layer: ICI 12 µs, HBM 18 µs, math 5 µs. What does moving from 4×4 to 4×8 buy?"
+  options:
+    - text: "Lower latency per step, not higher throughput per chip: the step stays HBM-bound."
+      correct: true
+      why: "More chips add HBM bandwidth, cutting step time, but each chip still waits on HBM."
+    - text: "Higher throughput per chip, because the step becomes compute-bound."
+      why: "Math is 5 µs against 18 µs of HBM."
+    - text: "Nothing: the step is ICI-bound."
+      why: "ICI (12 µs) is below HBM (18 µs)."
+    - text: "It fails: 70B does not fit on 32 v5e chips."
+      why: "141 GB of bf16 weights over 32 chips is 4.4 GB per chip."
+  adapted_from: SB8 Q9
+  source: "SB8 #worked-problems"
+
+- id: ch08-405b
+  type: scenario
+  prompt: "Serving LLaMA-3-405B in int8 on v5e under 15 ms per token, a team uses one 256-chip replica. Why does that underperform several 64-chip replicas?"
+  options:
+    - text: "Beyond about 64 chips, throughput per chip stops rising and 256-way model parallelism makes the activation collectives ICI-bound."
+      correct: true
+      why: "Derived: per-chip throughput levels off near 149 tokens/s under the deadline, while Y < F/(Bβ) shrinks as Y grows. 64-chip replicas are the better unit."
+    - text: "406 GB of weights does not fit on 256 chips."
+      why: "It fits easily: 1.6 GB per chip."
+    - text: "256 chips cannot hold enough KV cache."
+      why: "256 chips hold over 1,700 sequences at 8k context."
+    - text: "v5e cannot form 256-chip slices."
+      why: "A full v5e pod is 16×16 = 256 chips."
+  source: "SB8 #worked-problems"
+
+- id: ch08-explain
+  type: free
+  prompt: "Explain to a vLLM-on-CUDA engineer how continuous batching works on TPU when every shape must be known at compile time."
+  model_answer: "The scheduler is unchanged upstream vLLM: requests join and leave every step, some prefilling and some decoding. The TPU side makes the step's shapes fixed. All query tokens from all sequences are flattened into one array, [max_num_tokens, heads, head_dim], with small metadata arrays (cumulative query lengths, KV lengths, the page table, and counts of decode, prefill and mixed sequences) carrying per-sequence structure. Token and sequence counts are padded up to a fixed set of buckets, each compiled before serving starts, so no request waits on a compile. Raggedness is handled inside the attention kernel: Ragged Paged Attention reads each sequence's KV pages through the block table, attends over its true length, fuses the cache write, and selects a decode, prefill or mixed sub-kernel per step. It is the same idea as CUDA graphs over padded batch sizes plus a paged-attention kernel, except the captured unit is the entire compiled step and an unseen shape means a recompile."
+  source: "R-tpuinf"
