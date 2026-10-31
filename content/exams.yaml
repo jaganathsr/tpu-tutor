@@ -4,4 +4,4 @@
 - { id: day3, title: Day 3 exam, description: Sharding and training, plus two from earlier days., chapters: [ch05, ch06], count: 10, earlier: 2 }
 - { id: day4, title: Day 4 exam, description: Inference, plus two from earlier days., chapters: [ch07, ch08], count: 10, earlier: 2 }
 - { id: day5, title: Day 5 exam, description: Compiler, kernels and profiling, plus two from earlier days., chapters: [ch09, ch10], count: 10, earlier: 2 }
-- { id: final, title: Final exam, description: Thirty questions across all ten chapters, at least two from each., chapters: [ch01, ch02, ch03, ch04, ch05, ch06, ch07, ch08, ch09, ch10], count: 30, per_chapter_min: 2 }
+- { id: final, title: Final exam, description: Thirty questions across all eleven chapters, at least two from each., chapters: [ch01, ch02, ch03, ch04, ch05, ch06, ch07, ch08, ch09, ch10, ch11], count: 30, per_chapter_min: 2 }

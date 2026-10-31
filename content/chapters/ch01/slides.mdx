@@ -1,0 +1,68 @@
+<Slide title="Two times bound every kernel">
+
+$$
+T_\text{math} = \frac{\text{FLOPs}}{C}, \qquad T_\text{comms} = \frac{\text{bytes}}{W}
+$$
+
+<Gloss>Arithmetic over peak FLOP/s; bytes over the bandwidth of whichever link carries them. With overlap, the kernel takes the max. Without, the sum: at most 2× worse.</Gloss>
+
+- Compute-bound when FLOPs per byte exceeds the chip's $C / W_\text{hbm}$, its ridge point.
+- On TPUs the compiler schedules HBM-to-VMEM copies ahead of use, so overlap is the default <Cite id="SB2" at="#what-is-a-tpu" />.
+
+</Slide>
+
+<Slide title="Ridge points, current chips">
+
+<ChipTable chips="v5e 7x 8t 8i H100 B200" cols="bf16 fp8 hbm_bw ai" />
+
+</Slide>
+
+<Slide title="A matmul's intensity is its token batch">
+
+<Cols>
+<div>
+
+$$
+\text{AI} = \frac{2BDF}{2BD + 2DF + 2BF} \approx B
+$$
+
+<Gloss>Weight bytes dominate when B is small, and each weight byte is used once per token.</Gloss>
+
+</div>
+<div>
+
+<Big n="313">tokens per chip before a bf16 matmul on Ironwood is compute-bound (v5e: 241, H100: 295)</Big>
+
+</div>
+</Cols>
+
+- Counts tokens per replica, not sequences. Model sharding does not move it.
+
+</Slide>
+
+<Slide title="Worked: LLaMA-3-70B up-projection, batch 64, one Ironwood chip">
+
+<Cols>
+<div>
+
+- FLOPs $3.01 \times 10^{10}$: $T_\text{math} = 13.0\ \mu$s
+- Bytes $4.75 \times 10^{8}$: $T_\text{hbm} = 64.3\ \mu$s
+- Intensity 63 against a ridge of 313
+
+</div>
+<div>
+
+<Big n="4.9×">HBM-bound. Compute-bound above 329 tokens for this shape.</Big>
+
+</div>
+</Cols>
+
+</Slide>
+
+<Slide title="Precision moves the ridge">
+
+- int8 or fp8 weights, bf16 math: weight bytes halve, so $B_\text{crit}$ halves. Ironwood example: 329 to 164.
+- fp8 math as well: peak doubles to 4,614 TFLOP/s, ridge doubles to 625, $B_\text{crit}$ returns to 329. The step still halves, 64 µs to 32 µs.
+- TPU 8i, fp8 everything: ridge about 1,024 <Provisional />. Google spent the die on 8,601 GB/s of HBM and 384 MB of SRAM instead <Cite id="G-8dd" />.
+
+</Slide>

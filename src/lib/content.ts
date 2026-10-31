@@ -53,6 +53,7 @@ export interface ExamDef {
 type MdxModule = { default: ComponentType<{ components?: Record<string, unknown> }>; frontmatter: Record<string, any> };
 
 const mdx = import.meta.glob<MdxModule>('../../content/chapters/*/index.mdx', { eager: true });
+const slideFiles = import.meta.glob<MdxModule>('../../content/chapters/*/slides.mdx', { eager: true });
 const quizFiles = import.meta.glob<Question[]>('../../content/chapters/*/quiz.yaml', { eager: true, import: 'default' });
 const cardFiles = import.meta.glob<Card[]>('../../content/chapters/*/cards.yaml', { eager: true, import: 'default' });
 
@@ -63,6 +64,7 @@ const byDir = <T,>(files: Record<string, T>) =>
 
 const mdxByDir = byDir(mdx);
 const quizByDir = byDir(quizFiles);
+const slidesByDir = byDir(slideFiles);
 const cardsByDir = byDir(cardFiles);
 
 export const chapters: ChapterMeta[] = (course.chapters as any[]).map((c) => {
@@ -85,6 +87,10 @@ export function chapter(id: string) {
 
 export function chapterContent(id: string) {
   return mdxByDir[id]?.default;
+}
+
+export function chapterSlides(id: string) {
+  return slidesByDir[id]?.default;
 }
 
 export function questions(id: string): Question[] {

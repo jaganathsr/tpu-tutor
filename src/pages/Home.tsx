@@ -28,7 +28,7 @@ export function Home() {
       <section class="map" aria-label="Course map: five days, two blocks each">
         <div class="map-rowhead corner" />
         {courseInfo.days.map((d) => (
-          <div class="map-colhead">
+          <div class="map-colhead" style={{ '--dayc': `var(--day${d.day})` }}>
             <strong>Day {d.day}</strong>
             <br />
             {d.theme}
@@ -43,6 +43,7 @@ export function Home() {
               const segs = [p.read, p.quizDone, p.teachDone];
               return (
                 <a
+                  style={{ '--dayc': `var(--day${d.day})` }}
                   class={`cell ${c.written ? '' : 'unwritten'} ${d.day === 5 ? 'last-col' : ''}`}
                   href={href(`/ch/${c.id}`)}
                   aria-label={`Chapter ${c.number}: ${c.title}. ${c.written ? '' : 'Not written yet.'}`}
@@ -71,6 +72,26 @@ export function Home() {
             })}
           </>
         ))}
+        {chapters
+          .filter((c) => c.day > courseInfo.days.length)
+          .map((c) => {
+            const p = chapterProgress(s, c.id);
+            return (
+              <>
+                <div class="map-rowhead">Synthesis</div>
+                <a class={`cell synthesis ${c.written ? '' : 'unwritten'}`} style={{ '--dayc': 'var(--day6)' }} href={href(`/ch/${c.id}`)}>
+                  <span class="cell-num">Chapter {c.number}, after Day 5</span>
+                  <span class="cell-title">{c.title}</span>
+                  <span class="cell-meta">
+                    {c.written ? `Quiz ${p.quizBest == null ? 'not taken' : `best ${Math.round(p.quizBest * 100)}%`}` : 'Not written yet'}
+                  </span>
+                  <span class="cell-progress">
+                    {[p.read, p.quizDone, p.teachDone].map((x) => <span class={x ? 'done' : ''} />)}
+                  </span>
+                </a>
+              </>
+            );
+          })}
       </section>
 
       <div class="btn-row">

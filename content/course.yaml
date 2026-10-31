@@ -2,7 +2,7 @@
 # here without an index.mdx shows on the home page as not yet written.
 title: TPU Deep Dive
 summary: >-
-  Ten chapters over five days on TPU hardware, interconnect, sharding, inference
+  Ten chapters over five days, plus a synthesis chapter, on TPU hardware, interconnect, sharding, inference
   and the software stack, written for engineers who already know GPUs.
 days:
   - { day: 1, theme: "Rooflines and the chip" }
@@ -21,3 +21,5 @@ chapters:
   - { id: ch08, number: 8, day: 4, block: 2, minutes: 55, title: "The TPU serving stack" }
   - { id: ch09, number: 9, day: 5, block: 1, minutes: 55, title: "From Python to the MXU" }
   - { id: ch10, number: 10, day: 5, block: 2, minutes: 55, title: "Pallas, XProf and a design review" }
+  # Synthesis chapter, taken after Day 5. Shown as a full-width row under the map.
+  - { id: ch11, number: 11, day: 6, block: 1, minutes: 55, title: "TPU and GPU architecture, side by side" }

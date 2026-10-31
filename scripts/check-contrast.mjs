@@ -22,11 +22,13 @@ const ratio = (a, b) => {
 
 // [foreground, background, minimum]
 const pairs = [
-  ['ink', 'paper', 7], ['ink-2', 'paper', 7], ['accent', 'paper', 7], ['ink', 'paper-2', 7],
-  ['ink', 'callout', 7], ['ink', 'breaks', 7], ['ink-3', 'paper', 3],
+  ['ink', 'paper', 7], ['ink-2', 'paper', 7], ['ink', 'paper-2', 7],
+  ['ink', 'callout', 7], ['ink', 'breaks', 7], ['ink', 'accent-tint', 7], ['ink-3', 'paper', 3],
+  ['accent', 'paper', 4.5], ['on-accent', 'accent-strong', 4.5], ['accent', 'accent-tint', 4.5],
   ['ok', 'ok-tint', 4.5], ['bad', 'bad-tint', 4.5], ['flag', 'flag-tint', 4.5],
-  ['ok', 'paper', 4.5], ['bad', 'paper', 4.5], ['accent', 'accent-tint', 4.5],
+  ['ok', 'paper', 4.5], ['bad', 'paper', 4.5],
   ['s1', 'paper-2', 3], ['s2', 'paper-2', 3], ['s3', 'paper-2', 3],
+  ['day1', 'paper', 3], ['day2', 'paper', 3], ['day3', 'paper', 3], ['day4', 'paper', 3], ['day5', 'paper', 3], ['day6', 'paper', 3],
 ];
 
 let failed = 0;

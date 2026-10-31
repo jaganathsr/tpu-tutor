@@ -42,6 +42,8 @@ for (const ch of course.chapters) {
   const fm = load(mdx.match(/^---([\s\S]*?)---/)[1]);
   for (const s of fm.sources ?? []) if (!sources[s.id]) report(`${dir}/index.mdx`, `frontmatter source ${s.id} unknown`);
 
+  if (existsSync(`${dir}/slides.mdx`)) lintText(`${dir}/slides.mdx`, readFileSync(`${dir}/slides.mdx`, 'utf8'));
+  else if (fm.status !== 'draft') report(dir, 'no slides.mdx');
   const quiz = existsSync(`${dir}/quiz.yaml`) ? load(readFileSync(`${dir}/quiz.yaml`, 'utf8')) : [];
   const cards = existsSync(`${dir}/cards.yaml`) ? load(readFileSync(`${dir}/cards.yaml`, 'utf8')) : [];
   const ids = new Set();

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { cards, chapter, chapterContent, questions, type ChapterMeta } from '../lib/content';
+import { cards, chapter, chapterContent, chapterSlides, questions, type ChapterMeta } from '../lib/content';
 import { href } from '../lib/router';
 import { chapterState, mutChapter, update, useStore } from '../lib/storage';
 import { useTimeTracker } from '../lib/progress';
@@ -77,7 +77,7 @@ export function ChapterPage({ id, tab }: { id: string; tab: Tab }) {
   ];
 
   return (
-    <div class="page">
+    <div class="page" style={{ '--dayc': `var(--day${ch.day})` }}>
       <div class="chapter">
         <nav class="chapter-left" aria-label="Chapter contents and sources">
           <div class="sticky">
@@ -97,7 +97,9 @@ export function ChapterPage({ id, tab }: { id: string; tab: Tab }) {
         <main class="chapter-main" ref={mainRef}>
           <header class="chapter-head">
             <div class="kicker">
-              Chapter {ch.number}. Day {ch.day}, {ch.block === 1 ? 'first' : 'second'} block, {ch.minutes} minutes
+              {ch.day > 5
+                ? `Chapter ${ch.number}. Synthesis, after Day 5, ${ch.minutes} minutes`
+                : `Chapter ${ch.number}. Day ${ch.day}, ${ch.block === 1 ? 'first' : 'second'} block, ${ch.minutes} minutes`}
             </div>
             <h1>{ch.title}</h1>
             {ch.status === 'draft' ? <div class="draft-note">Draft: placeholder chapter for the design review. Content is partial.</div> : null}
@@ -141,6 +143,12 @@ export function ChapterPage({ id, tab }: { id: string; tab: Tab }) {
                   Next: <a href={href(`/ch/${id}/quiz`)}>take the quiz</a>, then{' '}
                   <a href={href(`/ch/${id}/cards`)}>review the flashcards</a> and{' '}
                   <a href={href(`/ch/${id}/teach`)}>write your teach-back</a>.
+                  {chapterSlides(id) ? (
+                    <>
+                      {' '}
+                      For a fast review later, <a href={href(`/slides/${id}/0`)}>open this chapter's slides</a>.
+                    </>
+                  ) : null}
                 </p>
               </div>
             </>

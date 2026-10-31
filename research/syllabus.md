@@ -1,6 +1,6 @@
 # TPU Deep Dive: Syllabus
 
-5 days × 2 blocks of ~55 min = 10 chapters. Audience: an experienced GPU engineer learning TPUs well enough to teach them. Source IDs refer to `research/sources.md`. Numbers marked † are recomputed by `scripts/specs.py` from those sources. They do not appear in any single source.
+5 days × 2 blocks of ~55 min = 10 chapters, plus a synthesis chapter (11) comparing TPU and GPU architecture. Audience: an experienced GPU engineer learning TPUs well enough to teach them. Source IDs refer to `research/sources.md`. Numbers marked † are recomputed by `scripts/specs.py` from those sources. They do not appear in any single source.
 
 ## Course-wide conventions
 
@@ -394,12 +394,64 @@ Two observations from this table drive several chapters. Ironwood's per-chip ICI
 
 ---
 
+## Synthesis (after Day 5)
+
+### Chapter 11: TPU and GPU architecture, side by side (55 min)
+
+Added at the learner's request on 2026-10-23. It consolidates the comparison callouts from Chapters 2, 3, 5, 9 and 10 into one argument. It replaces the "comparison reference page" planned earlier. Trainium appears as a third column wherever the comparison is informative.
+
+**Time split:** design philosophy 10 min · compute and memory 15 min · interconnect and collectives 10 min · software and programming model 10 min · where each wins 10 min.
+
+**Learning objectives**
+- I can state the design bet behind each family:
+  - GPU: many independent SMs, a hardware-managed cache hierarchy and SIMT latency hiding. General purpose; it "just works" more often [SB12].
+  - TPU: 1–2 large single-threaded cores, systolic MXUs, a compiler-managed scratchpad and whole-program compilation. Closer to roofline with less work, provided the compiler can see everything [SB12].
+  - Trainium: 8 NeuronCores per chip, systolic tensor engines with SBUF/PSUM. A hybrid of the two.
+- I can compare the chips quantitatively for H100, B200, GB300, Rubin, Ironwood, 8t, 8i, Trn2 and Trn3. The table covers matrix-unit count and shape, vector width, register file, on-chip SRAM (SMEM+L2 vs VMEM vs SBUF), HBM capacity and bandwidth, ridge point per precision, and price-normalized FLOPs where public.
+- I can compare scale-up and scale-out:
+  - NVLink domain (8 or 72 GPUs, one hop, SHARP) and IB/Ethernet fat tree.
+  - ICI torus (about 9,000 chips, multi-hop, no switch) plus OCS, Boardfly on 8i, and DCN/Virgo.
+  - Trainium's move from torus to NeuronSwitch.
+  - I can derive the consequences: AllToAll on TPU is ¼ of an AllGather vs ⅛ inside an NVLink node; 8×H100 AllReduce reaches only about 370 GB/s at 10 GB messages; DP thresholds of 850 vs 2,500 tokens per chip.
+- I can compare the programming models:
+  - CUDA/Triton/CUTLASS vs Pallas/Mosaic vs NKI.
+  - Kernel launches with CUDA Graphs vs one XLA executable.
+  - Eager PyTorch vs TorchTPU vs TorchNeuron.
+  - MIG partitioning vs TPU slices vs Trainium LNC merging.
+- I can say, for a given workload, which design has the structural advantage and why: large dense training, MoE training, low-latency decode, long-context prefill, embedding-heavy recommendation, and research code with novel ops.
+- I can name the convergence trends of 2025–26: Blackwell TMEM and single-thread MMA issue move toward dedicated accumulator stores; Trainium moved to switched scale-up; the TPU split into training and inference chips; both cloud vendors moved PyTorch off torch-xla.
+
+**Reading**
+- [SB12] all sections.
+- [SB2] `#tpu-networking`.
+- [N-wp] "H100 GPU Architecture In-Depth".
+- [N-tune] §1.4.
+- [A-trn2-nki], [A-trn3-sys].
+- [G-8dd].
+- [T-pt] "A TPU Primer".
+- [N-graphs] §4.2.
+- `notes/comparisons.md` §3 (12-point difference list).
+
+**Interactive:** a comparison explorer. Pick any two or three chips and a workload (dense matmul at batch B, decode step, AllGather of V bytes over N chips, AllToAll for MoE). See the predicted time on each with the bottleneck named, side by side.
+
+**Book problems adapted:**
+- SB12 Quiz 1: CUDA cores vs VPU ALUs; H100 vs B200 intensity.
+- SB12 Quiz 2: 8×H100 AllGather at 1.04 ms.
+- SB12 Quiz 4 Q5: two-node AllGather bottleneck.
+- SB12 Quiz 5 Q1: B200 rooflines.
+- A derived Ironwood vs GB200 NVL72 comparison for one MoE layer.
+
+**Teach-back prompts**
+1. "In five minutes, explain to a room of CUDA engineers what a TPU gives up relative to a GPU, what it gets in return, and how to tell which side of that trade their workload is on."
+2. "Why can a TPU pod reach about 9,000 chips without switches while NVLink stops at 72, and what does each topology make cheap or expensive?"
+3. "Blackwell added TMEM and single-thread MMA issue. Argue whether GPUs are converging on TPU design, with the evidence for and against."
+
 ## Reinforcement beyond chapters
 
 - **Day-end mini-exams** (Days 1–5): 10 questions drawn from that day's two chapters plus 2 from earlier days.
 - **Final exam:** 30 questions. At least 2 per chapter, at least 10 numeric (checked within tolerance), at least 4 "spot the bottleneck", and 2 free-response "explain to a GPU engineer" questions with model answers.
 - **Flashcards:** 15–25 per chapter, about 200 in total, scheduled with SM-2.
-- **Comparison reference page** (not a chapter): one consolidated TPU vs GPU vs Trainium table covering compute unit, matrix unit, on-chip memory, scale-up topology, collectives implementation, kernel language, compiler path and partitioning model, linked from Chapters 2, 3, 5 and 9.
+- **Review slides:** every chapter has a `slides.mdx` written alongside it. The Slides page (`#/slides/all/0`) shows the whole course as one deck, with a title slide per chapter listing its objectives. It can also show one chapter (`#/slides/<id>/0`) and prints at one slide per page for a PDF.
 - **Glossary:** TensorCore vs Tensor Core, slice, cube, pod, superpod, megacore, chiplet, OCS, ICI, DCN, MXU, VPU, XLU, VMEM, SMEM, CMEM, SparseCore, CAE, Boardfly, HLO, LLO, Mosaic, Shardy and the rest.
 
 ## Changes from the suggested arc, and why

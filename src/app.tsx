@@ -4,6 +4,7 @@ import { dueCount } from './lib/progress';
 import { Home } from './pages/Home';
 import { ChapterPage } from './pages/Chapter';
 import { Data, Exam, Exams, Review, Sources } from './pages/Other';
+import { SlidesPage } from './pages/Slides';
 
 function ThemeToggle() {
   const s = useStore();
@@ -36,6 +37,7 @@ export function App() {
   let page;
   if (section === '') page = <Home />;
   else if (section === 'ch' && parts[1]) page = <ChapterPage id={parts[1]} tab={(parts[2] as any) ?? 'read'} />;
+  else if (section === 'slides') page = <SlidesPage scope={parts[1] ?? 'all'} n={Number(parts[2] ?? 0) || 0} />;
   else if (section === 'review') page = <Review />;
   else if (section === 'exams') page = <Exams />;
   else if (section === 'exam' && parts[1]) page = <Exam id={parts[1]} />;
@@ -65,6 +67,7 @@ export function App() {
             <a href={href('/review')} aria-current={cur('review')}>
               Review <span class="due-count">{due ? `(${due} due)` : ''}</span>
             </a>
+            <a href={href('/slides/all/0')} aria-current={cur('slides')}>Slides</a>
             <a href={href('/exams')} aria-current={section === 'exams' || section === 'exam' ? 'page' : undefined}>Exams</a>
             <a href={href('/sources')} aria-current={cur('sources')}>Sources</a>
             <ThemeToggle />
