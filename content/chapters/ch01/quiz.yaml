@@ -1,17 +1,17 @@
-# Chapter 1 quiz (draft: 5 of the planned 8-12 questions).
+# Chapter 1 quiz. Numbers recomputed in scripts/ch01_roofline.py.
 - id: ch01-ridge-def
   type: mcq
-  prompt: "A chip's ridge point against HBM is defined as:"
+  prompt: "A chip's ridge point against HBM is:"
   options:
     - text: Peak FLOP/s divided by HBM bandwidth in bytes/s.
       correct: true
       why: "It is the arithmetic intensity at which $T_\\text{math} = T_\\text{comms}$. Above it a kernel is compute-bound."
     - text: HBM capacity divided by peak FLOP/s.
-      why: Capacity limits what fits, not how fast it runs. It has units of seconds per byte-of-capacity and appears in no roofline.
+      why: Capacity limits what fits, not how fast it runs. It appears in no roofline.
     - text: The batch size at which HBM fills up.
-      why: That is a memory-capacity limit. The ridge point is independent of capacity.
+      why: That is a capacity limit. The ridge point is independent of capacity.
     - text: Peak FLOP/s divided by ICI bandwidth.
-      why: That ratio exists, but it is the ICI roofline, used for sharded matmuls in Chapter 5. The HBM ridge uses HBM bandwidth.
+      why: That ratio exists, but it is the ICI roofline, used for sharded matmuls in Chapters 5 and 6.
   explanation: "Ironwood: $2.307\\times10^{15} / 7.38\\times10^{12} = 313$ FLOP/B."
   source: "SB1 #where-does-the-time-go"
 
@@ -21,17 +21,44 @@
   answer: 312.6
   tolerance: 0.03
   unit: FLOP/B
-  explanation: "$2.307 \\times 10^{15} / 7.38 \\times 10^{12} = 312.6$. A bf16 matmul on Ironwood needs a per-chip token batch above about 313 to be compute-bound."
+  explanation: "$2.307 \\times 10^{15} / 7.38 \\times 10^{12} = 312.6$. A bf16 matmul on Ironwood needs a token batch above about 313 per replica to be compute-bound."
   source: "D-7x"
 
 - id: ch01-int8-weights-v5e
   type: numeric
-  prompt: "On TPU v5e (197 TFLOP/s bf16, 820 GB/s HBM), you store a matmul's weights in int8 and keep activations and arithmetic in bf16. Ignoring activation bytes, above what token batch B does the matmul become compute-bound?"
+  prompt: "On TPU v5e (197 TFLOP/s bf16, 820 GB/s HBM), a matmul's weights are stored in int8 while activations and arithmetic stay in bf16. Ignoring activation bytes, above what token batch B is it compute-bound?"
   answer: 120
   tolerance: 0.05
   unit: tokens
   explanation: "FLOPs are $2BDF$; weight bytes are now $DF$. Compute-bound when $2BDF / DF = 2B > 1.97\\times10^{14}/8.2\\times10^{11} = 240$, so $B > 120$."
   adapted_from: SB1 Q2
+  source: "SB1 #a-few-problems-to-work"
+
+- id: ch01-per-example-weights
+  type: mcq
+  prompt: "Each example in a batch has its own weight matrix: int8[B, D] · int8[B, D, F] → int8[B, F]. What is the arithmetic intensity, roughly?"
+  options:
+    - text: About 2, independent of B.
+      correct: true
+      why: "FLOPs are still $2BDF$, but bytes are now $BD + BDF + BF \\approx BDF$. No weight byte is reused across examples."
+    - text: About B, as for a shared weight matrix.
+      why: "Intensity is about B only when one weight matrix is shared by all B tokens. Here each token brings its own."
+    - text: About 2B, because int8 halves the bytes.
+      why: "Int8 halves bytes and FLOPs per byte doubles relative to bf16, but the weight term grows with B, so B cancels."
+    - text: About 240, the v5e ridge point.
+      why: "The ridge is a property of the chip, not of the operation."
+  explanation: "This kernel is memory-bound on every chip. The same structure appears in decode attention, where every sequence has its own KV cache (Chapter 4)."
+  adapted_from: SB1 Q4
+  source: "SB1 #a-few-problems-to-work"
+
+- id: ch01-h100-ridge
+  type: numeric
+  prompt: "NVIDIA's H100 SXM page lists 1,979 TFLOP/s of BF16 Tensor Core throughput with sparsity, and 3.35 TB/s of HBM bandwidth. What is the dense BF16 ridge point?"
+  answer: 295
+  tolerance: 0.03
+  unit: FLOP/B
+  explanation: "Dense is half the sparse figure: $9.89\\times10^{14} / 3.35\\times10^{12} = 295$. Close to v5e's 240 and Ironwood's 313."
+  adapted_from: SB1 Q5
   source: "SB1 #a-few-problems-to-work"
 
 - id: ch01-decode-bottleneck
@@ -42,17 +69,76 @@
       correct: true
       why: "Intensity is 63 FLOP/B against a ridge of 313, so the op is HBM-bound by 4.9×."
     - text: "MXU throughput: 30 GFLOP at 2,307 TFLOP/s."
-      why: "That is 13 µs, a fifth of the measured time. The MXUs are idle about 80% of the op."
+      why: "That is 13 µs, a fifth of the measured time. The matrix units are idle about 80% of the op."
     - text: "ICI bandwidth, because the weights are sharded."
       why: "The scenario is one chip with no sharding, so no ICI traffic is involved."
     - text: "Kernel launch overhead."
-      why: "XLA compiles the step into one program; there is no per-op host launch on the critical path. 64 µs matches the HBM estimate exactly."
-  explanation: "To make the MXUs the bottleneck you would need about 329 tokens in the batch, or a smaller weight footprint per token."
+      why: "XLA compiles the step into one program; there is no per-op host launch on the critical path. 64 µs matches the HBM estimate."
+  explanation: "To make the matrix units the bottleneck you need about 329 tokens in the batch, or fewer weight bytes per token."
   source: "SB1 #matrix-multiplication"
+
+- id: ch01-fp8-math
+  type: scenario
+  prompt: "On Ironwood you move the example up-projection from bf16 to fp8 for weights, activations and math. Which statement is right?"
+  options:
+    - text: "The step time roughly halves, but the batch needed to be compute-bound stays about the same."
+      correct: true
+      why: "Bytes halve, so HBM time halves (64 to 32 µs). Peak doubles to 4,614 TFLOP/s, so the ridge doubles to 625, and the compute-bound batch stays near 329."
+    - text: "The step becomes compute-bound at batch 64."
+      why: "Intensity rises to about 127 FLOP/B but the fp8 ridge is 625. Still HBM-bound by about 5×."
+    - text: "Nothing changes, because the op is memory-bound."
+      why: "Memory-bound ops speed up when bytes shrink. Halving bytes halves the time."
+    - text: "The batch needed to be compute-bound halves to about 164."
+      why: "That is the effect of fp8 weights with bf16 math. Moving the math to fp8 doubles the peak and cancels it."
+  source: "D-7x"
+
+- id: ch01-network-roofline
+  type: numeric
+  prompt: "On TPU v5e (197 TFLOP/s; 45 GB/s per ICI link one way), $X[B,D] \\cdot W[D,F]$ is split along $D$ over two chips. Each chip multiplies its half, then they exchange bf16 partial sums of size $[B, F]$. Above what value of $D$ is the step compute-bound?"
+  answer: 8755
+  tolerance: 0.03
+  explanation: "Compute-bound when $BDF / C > 2BF / W$, so $D > 2C/W = 2 \\cdot 1.97\\times10^{14} / 4.5\\times10^{10} = 8{,}755$. B cancels. On Ironwood (100 GB/s per link one way) the threshold is about 46,000."
+  source: "SB1 #network-communication-rooflines"
+
+- id: ch01-v1-bottleneck
+  type: mcq
+  prompt: "TPUv1's own paper found most of its production inference workloads were limited by what?"
+  options:
+    - text: "Weight-memory bandwidth: 34 GB/s of DDR3 against a ridge of 1,350 operations per weight byte."
+      correct: true
+      why: "The paper estimates GDDR5 would have tripled performance. v2 moved to HBM at about 20× the bandwidth."
+    - text: "The 256×256 array was too small for the models."
+      why: "The array was large for the time. The binding constraint was feeding it."
+    - text: "Lack of floating-point support."
+      why: "Int8 was adequate for inference. Floating point became necessary for training, which v1 did not target."
+    - text: "PCIe bandwidth to the host."
+      why: "PCIe carried inputs and outputs. Weights lived in the card's own DDR3, which was the bottleneck."
+  source: "P-v1"
+
+- id: ch01-generation-match
+  type: mcq
+  prompt: "Which generation introduced optical circuit switches and the 3D torus?"
+  options:
+    - text: TPU v4
+      correct: true
+      why: "v4 built 4,096-chip pods from 4×4×4 cubes joined by OCS, at under 5% of system cost."
+    - text: TPUv3
+      why: "v3 scaled the v2 design to 1,024 chips in a 2D torus with liquid cooling. No OCS."
+    - text: TPU v5p
+      why: "v5p uses the v4 design at 8,960 chips. It did not introduce it."
+    - text: TPU7x Ironwood
+      why: "Ironwood uses OCS-joined cubes at 9,216 chips, inherited from v4."
+  source: "P-v4"
 
 - id: ch01-explain-int8
   type: free
   prompt: "Explain to a GPU engineer why int8 weights with bf16 math halve the batch needed for a compute-bound matmul, while int8 weights with int8 math do not."
-  model_answer: "The compute-bound batch is where FLOPs per byte equals peak FLOP/s per byte of bandwidth. Int8 weights halve the bytes read per weight but leave the FLOPs unchanged, so each weight byte now carries twice the arithmetic and the batch needed halves: 240 to 120 on v5e. Switching the math to int8 as well doubles the peak rate (197 to 394 TOP/s on v5e), which doubles the chip's ridge point. The two effects cancel and the compute-bound batch returns to about 240. The step still runs faster, because the bytes halved; only the batch at which the MXUs saturate is unchanged."
+  model_answer: "The compute-bound batch is where FLOPs per byte equals the chip's peak FLOP/s per byte of bandwidth. Int8 weights halve the bytes read per weight but leave the FLOPs unchanged, so each weight byte carries twice the arithmetic and the batch needed halves: 240 to 120 on v5e. Switching the math to int8 as well doubles the peak rate (197 to 394 TOP/s on v5e), which doubles the ridge point. The two effects cancel and the compute-bound batch returns to about 240. The step still runs faster, because the bytes halved. Only the batch at which the matrix units saturate is unchanged."
   adapted_from: SB1 Q1-Q2
   source: "SB1 #a-few-problems-to-work"
+
+- id: ch01-explain-8i
+  type: free
+  prompt: "A colleague asks why TPU 8i spends its die on 384 MB of SRAM and 8.6 TB/s of HBM rather than more FP8 FLOPs. Answer with numbers."
+  model_answer: "Decode is HBM-bound. At fp8 the 8i ridge is about 1,024 FLOP/B (provisional figures), so a matmul needs well over 500 tokens per chip before more FLOPs would help, and at long context the KV cache makes such batches impossible to fit. More FLOPs would sit idle. Time per decode step is set by bytes read per step, weights plus KV cache, divided by bandwidth. So the levers are more bandwidth (8,601 GB/s, up from 7,380 on Ironwood) and keeping hot data, such as KV cache, in on-chip SRAM, which is 3× Ironwood's."
+  source: "G-8dd"

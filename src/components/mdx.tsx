@@ -4,6 +4,7 @@ import sources from '../generated/sources.json';
 import chips from '../generated/chips.json';
 import { si } from '../lib/format';
 import { RooflinePlotter } from '../interactives/RooflinePlotter';
+import { GenerationChart } from '../interactives/GenerationChart';
 
 type Src = { id: string; title: string; url: string; section: string };
 const SRC = sources as Record<string, Src>;
@@ -48,6 +49,11 @@ export function AnalogyBreaks({ children }: { children: ComponentChildren }) {
       {children}
     </aside>
   );
+}
+
+/** Lets a table or figure extend into the margin column on wide screens. */
+export function Wide({ children }: { children: ComponentChildren }) {
+  return <div class="wide">{children}</div>;
 }
 
 export function Note({ children }: { children: ComponentChildren }) {
@@ -164,6 +170,7 @@ export const mdxComponents = {
   GpuAnalogy,
   AnalogyBreaks,
   Note,
+  Wide,
   Unverified,
   Provisional,
   Derived,
@@ -171,4 +178,5 @@ export const mdxComponents = {
   Interactive,
   ChipTable,
   RooflinePlotter,
+  GenerationChart,
 };

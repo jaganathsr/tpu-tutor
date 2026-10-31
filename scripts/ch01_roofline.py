@@ -37,3 +37,40 @@ if __name__ == "__main__":
     for k in ("v5e", "7x", "H100"):
         c = CHIPS[k]
         print(f"{c.name}: ridge {c.flops_bf16 / c.hbm_bw:.1f}")
+
+
+# ---- Generation growth (flagship training chips), indexed to TPUv2 ----
+# bf16 dense TFLOP/s and HBM GB/s per chip. Sources: P-v23 Tbl 3 (v2, v3),
+# P-v4 / D-v4 (v4), D-v5p, D-7x, J-hw (8t bf16, provisional), G-8dd (8t HBM).
+GENERATIONS = [
+    ("TPUv2", 2017, 46, 700),
+    ("TPUv3", 2018, 123, 900),
+    ("TPU v4", 2020, 275, 1200),
+    ("TPU v5p", 2023, 459, 2765),
+    ("TPU7x", 2025, 2307, 7380),
+]
+
+
+def generation_growth():
+    f0, b0 = GENERATIONS[0][2], GENERATIONS[0][3]
+    rows = []
+    for name, year, tf, bw in GENERATIONS:
+        rows.append((name, year, tf / f0, bw / b0, tf * 1e12 / (bw * 1e9)))
+    return rows
+
+
+def network_roofline(C, link_oneway):
+    """SB1 #network-communication-rooflines: X[B,D] @ Y[D,F] with D split over
+    2 chips. Each chip does BDF FLOPs then exchanges 2BF bytes of partial sums.
+    Compute-bound iff D > 2C / W."""
+    return 2 * C / link_oneway
+
+
+if __name__ == "__main__":
+    print("\nGrowth since TPUv2 (FLOPs x, HBM BW x, ridge FLOP/B):")
+    for r in generation_growth():
+        print(f"  {r[0]:8} {r[1]}  {r[2]:6.1f}x  {r[3]:5.1f}x  ridge {r[4]:.0f}")
+    print(f"TPUv1 ridge (int8 ops per weight byte, P-v1 §4): 92e12 / 34e9 = {92e12/34e9:.0f}")
+    print(f"Network roofline, v5e (book, 4.5e10 one-way): D > {network_roofline(1.97e14, 4.5e10):,.0f}")
+    print(f"Network roofline, Ironwood (100 GB/s one-way, derived from D-7x): D > {network_roofline(2.307e15, 100e9):,.0f}")
+    print(f"Ironwood fp8 peak / v2 bf16 peak: {4614/46:.0f}x ; HBM {7380/700:.1f}x  (P-Micro26: ~100x, ~10x)")

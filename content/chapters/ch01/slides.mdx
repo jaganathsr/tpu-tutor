@@ -1,19 +1,54 @@
+<Slide title="Ten generations, each a response to a bottleneck">
+
+| Chip | Year | Answer to |
+|---|---|---|
+| v1 | 2015 | inference cost: one 256×256 int8 array, DDR3-bound |
+| v2, v3 | 2017–18 | training: HBM, bf16, ICI 2D torus, 1,024 chips |
+| v4 | 2020 | scale and failures: OCS, 3D torus, SparseCore |
+| v5e / v5p | 2023 | cost vs scale: 256-chip 2D vs 8,960-chip 3D |
+| v6e | 2024 | 256×256 MXU, 4.7× v5e |
+| 7x Ironwood | 2025 | inference at scale: FP8, 192 GiB, 9,216 chips |
+| 8t / 8i | 2026 | split: training torus vs inference SRAM + Boardfly |
+
+</Slide>
+
+<Slide title="FLOPs outgrew bandwidth">
+
+<Cols>
+<div>
+
+<Big n="50×">BF16 FLOP/s per chip, TPUv2 to Ironwood</Big>
+
+<Big n="10.5×">HBM bandwidth per chip over the same span</Big>
+
+</div>
+<div>
+
+- The ridge point rose from 66 to 313 FLOP/B.
+- Each generation needs more tokens per chip to keep the matrix units busy.
+- Google's retrospective: about 100× peak, 10× HBM <Cite id="P-Micro26" />.
+
+</div>
+</Cols>
+
+</Slide>
+
 <Slide title="Two times bound every kernel">
 
 $$
 T_\text{math} = \frac{\text{FLOPs}}{C}, \qquad T_\text{comms} = \frac{\text{bytes}}{W}
 $$
 
-<Gloss>Arithmetic over peak FLOP/s; bytes over the bandwidth of whichever link carries them. With overlap, the kernel takes the max. Without, the sum: at most 2× worse.</Gloss>
+<Gloss>Arithmetic over peak FLOP/s; bytes over the bandwidth of the link that carries them. Overlapped: the max. Not overlapped: the sum, at most 2× worse.</Gloss>
 
-- Compute-bound when FLOPs per byte exceeds the chip's $C / W_\text{hbm}$, its ridge point.
-- On TPUs the compiler schedules HBM-to-VMEM copies ahead of use, so overlap is the default <Cite id="SB2" at="#what-is-a-tpu" />.
+- Compute-bound when FLOPs per byte exceeds the ridge point, $C / W_\text{hbm}$.
+- On TPUs the compiler prefetches HBM into VMEM, so overlap is the default.
 
 </Slide>
 
-<Slide title="Ridge points, current chips">
+<Slide title="Ridge points">
 
-<ChipTable chips="v5e 7x 8t 8i H100 B200" cols="bf16 fp8 hbm_bw ai" />
+<ChipTable chips="v5e v5p v6e 7x 8t 8i H100 B200" cols="bf16 fp8 hbm_bw ai" />
 
 </Slide>
 
@@ -31,23 +66,24 @@ $$
 </div>
 <div>
 
-<Big n="313">tokens per chip before a bf16 matmul on Ironwood is compute-bound (v5e: 241, H100: 295)</Big>
+<Big n="313">tokens per chip before a bf16 matmul on Ironwood is compute-bound (v5e 241, H100 295)</Big>
 
 </div>
 </Cols>
 
-- Counts tokens per replica, not sequences. Model sharding does not move it.
+- Tokens per replica, not sequences. Model sharding does not change it.
 
 </Slide>
 
-<Slide title="Worked: LLaMA-3-70B up-projection, batch 64, one Ironwood chip">
+<Slide title="Worked: LLaMA-3-70B up-projection, batch 64, one Ironwood">
 
 <Cols>
 <div>
 
-- FLOPs $3.01 \times 10^{10}$: $T_\text{math} = 13.0\ \mu$s
-- Bytes $4.75 \times 10^{8}$: $T_\text{hbm} = 64.3\ \mu$s
-- Intensity 63 against a ridge of 313
+- $3.01 \times 10^{10}$ FLOPs: $T_\text{math} = 13.0\ \mu$s
+- $4.75 \times 10^{8}$ bytes: $T_\text{hbm} = 64.3\ \mu$s
+- Intensity 63, ridge 313
+- v5e: 579 µs. H100: 142 µs.
 
 </div>
 <div>
@@ -61,8 +97,39 @@ $$
 
 <Slide title="Precision moves the ridge">
 
-- int8 or fp8 weights, bf16 math: weight bytes halve, so $B_\text{crit}$ halves. Ironwood example: 329 to 164.
-- fp8 math as well: peak doubles to 4,614 TFLOP/s, ridge doubles to 625, $B_\text{crit}$ returns to 329. The step still halves, 64 µs to 32 µs.
-- TPU 8i, fp8 everything: ridge about 1,024 <Provisional />. Google spent the die on 8,601 GB/s of HBM and 384 MB of SRAM instead <Cite id="G-8dd" />.
+$$
+B_\text{crit} = \beta \cdot \frac{C}{W_\text{hbm}}, \qquad \beta = \frac{\text{bytes per weight}}{\text{bytes per activation}}
+$$
+
+- int8/fp8 weights, bf16 math: $B_\text{crit}$ halves. v5e 240 to 120; Ironwood example 329 to 164.
+- fp8 math too: peak doubles, ridge 625, $B_\text{crit}$ back to 329. Step time still halves: 64 to 32 µs.
+- TPU 8i fp8 ridge about 1,024 <Provisional />. So 8i bought bandwidth and 384 MB of SRAM instead of FLOPs.
+
+</Slide>
+
+<Slide title="The same roofline on a link">
+
+$$
+\frac{BDF}{C} > \frac{2BF}{W_\text{link}} \iff D > \frac{2C}{W_\text{link}}
+$$
+
+<Gloss>Split the contracting dimension over 2 chips only if each half's math outlasts shipping the partial sums.</Gloss>
+
+<Cols>
+<div>
+<Big n="8,755">v5e threshold on D</Big>
+</div>
+<div>
+<Big n="46,140">Ironwood threshold <Derived /></Big>
+</div>
+</Cols>
+
+</Slide>
+
+<Slide title="What the HBM roofline leaves out">
+
+- **VPU work:** its own roofline, critical intensity about 3 on v5p. Cheap only when fused.
+- **Latency:** about 1 µs per ICI hop. Under about 45 kB per hop on v5e, latency dominates.
+- **Achievable peak:** the book's estimate is 80–85% on H100/B200 and about 95% on TPU; the measurements are not published.
 
 </Slide>

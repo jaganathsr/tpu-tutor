@@ -1,32 +1,120 @@
 ---
-status: draft
 objectives:
-  - I can compute T_math, T_comms and the critical arithmetic intensity for any chip from its spec sheet, and state which regime a kernel is in.
-  - I can derive that a bf16 matmul's intensity is about the token batch B when B is much smaller than D and F, and give the compute-bound batch for v5e, Ironwood, H100 and TPU 8i.
+  - I can explain each TPU generation, from v1 to 8t and 8i, as a response to a named bottleneck.
+  - I can compute the math time, the communication time and the ridge point for any chip from its spec sheet, and state which regime a kernel is in.
+  - I can derive that a bf16 matmul's arithmetic intensity is about its token batch, and give the compute-bound batch for v5e, Ironwood, H100 and TPU 8i.
   - I can show why int8 or fp8 weights with bf16 math halve the compute-bound batch, and why fp8 math doubles it again.
-  - I can explain each TPU generation as a response to a named bottleneck.
+  - I can apply the same roofline to an interconnect link and derive when a sharded matmul is communication-bound.
+  - I can name what the HBM roofline leaves out (VPU-bound ops, latency-bound transfers, achievable fraction of peak) and when each matters.
 teachback:
   - Your H100 intuition says a decode step at batch 64 is memory-bound. Show on a whiteboard whether that holds on Ironwood, and at what batch it stops holding.
+  - Why did Google build an inference-only chip first, then a training chip, then split into two chips again in 2026? Name the bottleneck each time.
   - Why does int8 weights with bf16 math lower the compute-bound batch, while int8 math does not?
-  - Why did Google build an inference-only chip first, then a training chip, then split again in 2026? Name the bottleneck each time.
+  - From TPUv2 to Ironwood, FLOPs per chip grew 50× and HBM bandwidth 10.5×. What does that do to the batch you need, and what did Google build to compensate?
 sources:
+  - { id: P-v1, label: "§2 architecture, §4 rooflines" }
+  - { id: P-v23, label: "Table 3, v1 to v3" }
+  - { id: P-Norrie, label: "Derivation from TPUv1" }
+  - { id: HC-v23, label: "Why 128×128" }
+  - { id: P-v4, label: "§2 OCS, §3 SparseCore" }
+  - { id: D-v5e }
+  - { id: D-v5p }
+  - { id: D-v6e }
+  - { id: G-v6e }
+  - { id: D-7x }
+  - { id: G-7x }
+  - { id: G-8dd }
+  - { id: J-hw, label: "per-core table, TPU 8 BF16/FP8" }
+  - { id: P-Micro26, label: "abstract" }
   - { id: SB1, anchor: "#where-does-the-time-go", label: "Where does the time go" }
   - { id: SB1, anchor: "#matrix-multiplication", label: "Matrix multiplication" }
-  - { id: SB2, anchor: "#what-is-a-tpu", label: "What is a TPU" }
+  - { id: SB1, anchor: "#network-communication-rooflines", label: "Network rooflines" }
   - { id: SB2, anchor: "#tpu-specs", label: "TPU specs" }
   - { id: SB6, anchor: "#what-does-llama-3-look-like", label: "LLaMA 3 shapes" }
-  - { id: D-7x }
-  - { id: J-hw }
-  - { id: G-8dd }
   - { id: N-h100 }
-  - { id: P-v1, label: "§4, rooflines" }
 ---
 
-This is a partial draft of Chapter 1, kept to the roofline section. It exists to review typography, callouts, formulas, the interactive and the quiz and flashcard engines before the remaining chapters are written. The history section will open the finished chapter.
+This chapter does two things. It walks the ten TPU generations as a sequence of answers to specific bottlenecks, and it sets up the one model the rest of the course reasons with: the roofline. The two are the same story. Every generation is Google moving a ridge point.
 
-## Three times that bound a kernel
+## Ten generations in one table
 
-A kernel on any accelerator spends time in two places: doing arithmetic and moving bytes. The Scaling Book models both as a count divided by a rate <Cite id="SB1" at="#where-does-the-time-go" />.
+<Wide>
+
+| Chip | Public | Role | Matrix units | Dense peak per chip | HBM | HBM BW | Largest ICI domain | Source |
+|---|---|---|---|---|---|---|---|---|
+| TPUv1 | 2015 deployed | Inference | 1 × 256×256, int8 | 92 TOPS int8 | 8 GiB DDR3 | 34 GB/s | none (PCIe card) | <Cite id="P-v1" /> |
+| TPUv2 | 2017 | Training | 2 cores × 1 × 128×128 | 46 TFLOP/s | 16 GiB | 700 GB/s | 256, 2D torus | <Cite id="P-v23" /> |
+| TPUv3 | 2018 | Training | 2 × 2 × 128×128 | 123 TFLOP/s | 32 GiB | 900 GB/s | 1,024, 2D torus | <Cite id="P-v23" /> |
+| TPU v4 | 2020 | Training | 2 × 4 × 128×128 | 275 TFLOP/s | 32 GiB | 1,200 GB/s | 4,096, 3D torus + OCS | <Cite id="P-v4" /> |
+| TPU v5e | 2023 | Cost, serving | 1 × 4 × 128×128 | 197 TFLOP/s | 16 GB | 819 GB/s | 256, 2D torus | <Cite id="D-v5e" /> |
+| TPU v5p | 2023 | Scale training | 2 × 4 × 128×128 | 459 TFLOP/s | 95 GiB | 2,765 GB/s | 8,960, 3D torus + OCS | <Cite id="D-v5p" /> |
+| TPU v6e | 2024 | Cost, serving | 1 × 2 × 256×256 | 918 TFLOP/s | 32 GB | 1,638 GB/s | 256, 2D torus | <Cite id="D-v6e" /> |
+| TPU7x | 2025, GA 2026 | Inference and training | 2 chiplets × 2 × 256×256 | 2,307 TFLOP/s; 4,614 fp8 | 192 GiB | 7,380 GB/s | 9,216, 3D torus + OCS | <Cite id="D-7x" /> |
+| TPU 8t | announced 2026-04 | Training | not published | 12.6 PFLOP/s fp4 | 216 GB | 6,528 GB/s | 9,600, 3D torus | <Cite id="G-8dd" /> |
+| TPU 8i | announced 2026-04 | Inference | not published | 10.1 PFLOP/s fp4 | 288 GB | 8,601 GB/s | 1,152, Boardfly | <Cite id="G-8dd" /> |
+
+</Wide>
+
+Peaks are BF16 unless stated. "2 × 4 × 128×128" means two TensorCores, each with four 128×128 matrix units. Google publishes only FP4 peaks for TPU 8. The JAX hardware table lists BF16 at 996 TFLOP/s for 8t and 1,100 TFLOP/s for 8i <Provisional /> <Cite id="J-hw" />. Neither chip had reached general availability as of 2026-10-23.
+
+<Note>
+TPU7x is Ironwood. The Cloud docs and JAX call it TPU7x; Google's launch posts call it Ironwood. This course uses both.
+</Note>
+
+## Each generation answers a bottleneck
+
+### TPUv1 (2015): inference throughput per watt
+
+Google projected in 2013 that speech recognition alone could double its datacenter compute <Cite id="P-v1" s="§1" />. The answer was a PCIe coprocessor with one 256×256 int8 systolic array, 24 MiB of on-chip buffer and 8 GiB of DDR3 at 34 GB/s. It ran 15–30× faster than the K80 GPU and Haswell CPU it was measured against, at 30–80× better TOPS/W. Its own roofline exposed its limit: the ridge sat at 1,350 operations per weight byte, so most production models were memory-bound, and the paper estimates GDDR5 would have tripled performance <Cite id="P-v1" s="§4, §7" />.
+
+### TPUv2 (2017): training
+
+Training needs floating point, more memory bandwidth and many chips. v2 replaced DDR3 with HBM (700 GB/s, about 20× v1), added a programmable vector unit with bf16 multiply and fp32 accumulate, and added the inter-chip interconnect, ICI. Chips connect directly in a 2D torus with routers on the chip and no external switch <Cite id="P-Norrie" /> <Cite id="P-v23" />. The array shrank to 128×128, because a 256×256 array wastes more of its cells on the matrix shapes real models produce <Cite id="HC-v23" s="Why 128x128" />.
+
+### TPUv3 (2018): more of the same, cooled by liquid
+
+Two matrix units per core, 940 MHz instead of 700, twice the HBM, and pods of 1,024 chips. Liquid cooling allowed the extra power <Cite id="P-v23" />.
+
+### TPU v4 (2020): scale, failures and embeddings
+
+v4 has three new pieces <Cite id="P-v4" />:
+
+- A 3D torus of 4×4×4 cubes, joined by optical circuit switches (OCS). The switches let a 4,096-chip pod be re-cut into slices, route around failed racks, and use twisted torus shapes. They cost under 5% of the system.
+- SparseCores for embedding lookups. They take about 5% of die area and run embedding-heavy models 5–7× faster.
+- 128 MiB of shared CMEM on the chip.
+
+### TPU v5e and v5p (2023): one line for cost, one for scale
+
+v5e is a single-core chip in 256-chip 2D pods, priced for serving and small training <Cite id="D-v5e" />. v5p is the training flagship: 95 GiB of HBM, 2,765 GB/s, and 8,960-chip pods <Cite id="D-v5p" />.
+
+### TPU v6e Trillium (2024): a bigger matrix unit
+
+v6e moved to 256×256 arrays, giving 4.7× v5e's peak per chip <Cite id="G-v6e" /> <Cite id="D-arch" />. v1 had used a 256×256 int8 array; v2 through v5 used 128×128. By 2024 the matrix dimensions in production models were large enough to fill 256×256 arrays.
+
+### TPU7x Ironwood (2025): inference at training scale
+
+Two compute chiplets per package, each seen by JAX as its own device. 192 GiB of HBM at 7,380 GB/s, native FP8 at 4,614 TFLOP/s, and 9,216-chip pods at about 10 MW <Cite id="D-7x" /> <Cite id="G-7x" />. Google's launch post calls it "the first Google TPU for the age of inference". The HBM capacity is for KV caches and the bandwidth is for decode.
+
+### TPU 8t and 8i (announced April 2026): two chips
+
+The first generation split by workload <Cite id="G-8dd" />:
+
+- **8t** keeps the 3D torus, scales the pod to 9,600 chips and doubles ICI bandwidth relative to Ironwood.
+- **8i** has 288 GB of HBM at 8,601 GB/s and 384 MB of on-chip SRAM, three times Ironwood's, sized to keep KV cache on chip. It replaces the torus with a lower-diameter "Boardfly" network of at most 7 hops, and replaces SparseCores with a collectives engine.
+
+The rest of this chapter explains why decode traffic pushed Google there.
+
+## FLOPs outgrew bandwidth
+
+From TPUv2 to Ironwood, per-chip BF16 FLOP/s grew 50× and HBM bandwidth grew 10.5×. Google's own retrospective gives the same shape: about 100× peak and 10× HBM over five generations, counting Ironwood's FP8 peak <Cite id="P-Micro26" />. The ratio of the two is the number this chapter is about.
+
+<Interactive caption={<><b>Generation growth.</b> Per-chip dense BF16 FLOP/s and HBM bandwidth for the flagship training chips, both indexed to TPUv2 = 1. Hover a generation for the absolute values. The last column of the table is the ridge point, defined below. Computed in scripts/ch01_roofline.py from P-v23, P-v4, D-v5p and D-7x.</>}>
+  <GenerationChart />
+</Interactive>
+
+## Two times bound every kernel
+
+A kernel spends time in two places: arithmetic and data movement. The Scaling Book models both as a count divided by a rate <Cite id="SB1" at="#where-does-the-time-go" />.
 
 $$
 T_\text{math} = \frac{\text{FLOPs}}{C}, \qquad T_\text{comms} = \frac{\text{bytes moved}}{W}
@@ -35,13 +123,13 @@ $$
 
 <Gloss>Time on arithmetic is work over peak FLOP/s, C. Time on data movement is bytes over the bandwidth W of whichever link carries them: HBM, ICI, PCIe or DCN.</Gloss>
 
-If the two overlap perfectly, the kernel takes $\max(T_\text{math}, T_\text{comms})$. If they do not overlap at all, it takes the sum. The two bounds differ by at most 2×, and the rest of this course reasons from the max.
+With perfect overlap the kernel takes $\max(T_\text{math}, T_\text{comms})$. With none it takes the sum, at most 2× worse. The course reasons from the max.
 
 <Note>
-On TPUs the compiler schedules HBM-to-VMEM copies ahead of use, so overlap is the normal case rather than a kernel-author achievement <Cite id="SB2" at="#what-is-a-tpu" />. Chapter 2 explains why.
+On TPUs the compiler schedules HBM-to-VMEM copies ahead of use, so overlap is the default rather than something a kernel author has to earn <Cite id="SB2" at="#what-is-a-tpu" />. Chapter 2 explains how.
 </Note>
 
-**Arithmetic intensity** is the ratio of the two counts, FLOPs per byte. A chip has its own intensity, the ratio of its two rates. A kernel is compute-bound when its intensity exceeds the chip's:
+**Arithmetic intensity** is the ratio of the two counts: FLOPs per byte moved. A chip has an intensity too, the ratio of its two rates. A kernel is compute-bound when its intensity exceeds the chip's:
 
 $$
 \frac{\text{FLOPs}}{\text{bytes}} > \frac{C}{W_\text{hbm}}
@@ -50,11 +138,11 @@ $$
 
 <Gloss>A kernel keeps the matrix units busy only if it does more arithmetic per byte than the chip can do per byte of bandwidth.</Gloss>
 
-The right-hand side is the chip's **ridge point**. For the chips in this course, with HBM as the link:
+The right-hand side is the chip's **ridge point**. TPUv2's was 66 FLOP/B and Ironwood's is 313. For the chips used in this course, against HBM:
 
-<ChipTable chips="v5e v5p v6e 7x 8t 8i H100 B200" cols="bf16 fp8 hbm_bw ai" />
+<ChipTable chips="v5e v5p v6e 7x 8t 8i H100 B200" cols="bf16 fp8 int8 hbm_bw ai" />
 
-Values come from Google Cloud TPU docs, the JAX hardware table for the TPU 8 BF16 and FP8 peaks, and NVIDIA product pages with sparse figures halved <Cite id="D-7x" /> <Cite id="J-hw" /> <Cite id="G-8dd" /> <Cite id="N-h100" />. The Scaling Book uses 240 for v5e; the docs-based figure here is 241.
+Values come from Cloud TPU docs, the JAX hardware table for TPU 8's BF16, FP8 and INT8 rows, and NVIDIA product pages with sparse figures halved <Cite id="D-7x" /> <Cite id="J-hw" /> <Cite id="G-8dd" /> <Cite id="N-h100" />. The Scaling Book uses 240 for v5e; the docs-based figure here is 241. v5p's ridge, 166, is lower than v5e's because v5p carries 3.4× the bandwidth for 2.3× the FLOPs. v5p and v6e list FP8 at the same rate as BF16, so FP8 on those chips saves bytes but not time <Cite id="D-v5p" /> <Cite id="J-hw" />.
 
 ## A matmul's intensity is its batch
 
@@ -65,31 +153,31 @@ $$
 \tag{1.3}
 $$
 
-<Gloss>When the token batch is small next to the weight dimensions, weight bytes dominate, and every weight byte is used B times. Intensity equals the number of tokens.</Gloss>
+<Gloss>When the token batch is small next to the weight dimensions, weight bytes dominate, and every weight byte is used once per token. Intensity equals the number of tokens.</Gloss>
 
-So a bf16 matmul on Ironwood is compute-bound once the per-replica token batch exceeds about 313. On v5e the figure is 241 and on an H100 it is 295 <Cite id="SB1" at="#matrix-multiplication" />. The batch counts tokens, not sequences. Model sharding does not change it, because sharding divides FLOPs and bandwidth by the same factor.
+So a bf16 matmul on Ironwood is compute-bound once the token batch per replica exceeds about 313. On v5e the figure is 241 and on an H100 it is 295 <Cite id="SB1" at="#matrix-multiplication" />. The batch counts tokens, not sequences. Model sharding does not change it, because sharding divides FLOPs and bandwidth by the same factor.
 
 <GpuAnalogy>
-<p>This is the same calculation as for an H100 at batch 64 in decode: intensity 63, ridge 295, so HBM-bound by about 4.7×. On Ironwood the ridge is 313, so the same step is HBM-bound by 4.9×. The decode intuition you already have carries over almost unchanged.</p>
+<p>This is the calculation you already do for an H100 in decode. At batch 64 the intensity is 63 against a ridge of 295, so the step is HBM-bound by about 4.7×. On Ironwood the ridge is 313 and the same step is HBM-bound by 4.9×. Your decode intuition carries over almost unchanged.</p>
 </GpuAnalogy>
 
 <AnalogyBreaks>
-<p>On an H100, the 50 MB L2 is a hardware cache, so whether a reused tile stays on chip is partly up to the hardware. On a TPU, nothing reaches the matrix units without an explicit copy into VMEM, and the compiler decides what lives there. Ironwood has 128 MiB of VMEM per chip <Cite id="J-hw" />. A matmul whose weights are already resident has a different ridge, set by VMEM bandwidth. Chapter 2 covers that case.</p>
+<p>On an H100 the 50 MB L2 is a hardware cache, so whether a reused tile stays on chip is partly up to the hardware. On a TPU nothing reaches the matrix units without an explicit copy into VMEM, and the compiler decides what lives there. Ironwood has 128 MiB of VMEM per chip <Cite id="J-hw" />. A matmul whose weights are already resident in VMEM has a different, much lower ridge, set by VMEM bandwidth. Chapter 2 covers that case.</p>
 </AnalogyBreaks>
 
-<Worked title="LLaMA-3-70B MLP up-projection at batch 64 on Ironwood">
+<Worked title="LLaMA-3-70B MLP up-projection at batch 64 on one Ironwood chip">
 
 The up-projection has $D = 8{,}192$ and $F = 28{,}672$ <Cite id="SB6" at="#what-does-llama-3-look-like" />. At $B = 64$ in bf16 on one Ironwood chip (2,307 TFLOP/s, 7,380 GB/s <Cite id="D-7x" />):
 
 - FLOPs: $2 \cdot 64 \cdot 8192 \cdot 28672 = 3.01 \times 10^{10}$, so $T_\text{math} = 13.0\ \mu\text{s}$.
-- Bytes: $4.75 \times 10^{8}$, almost all of it the 470 MB weight matrix, so $T_\text{hbm} = 64.3\ \mu\text{s}$.
+- Bytes: $4.75 \times 10^{8}$, nearly all of it the 470 MB weight matrix, so $T_\text{hbm} = 64.3\ \mu\text{s}$.
 - Intensity: 63.4 FLOP/B against a ridge of 313. HBM-bound by 4.9×.
 
-Solving Eq. 1.3 exactly for this shape puts the compute-bound batch at 329 tokens, slightly above the ridge, because activation bytes are not zero. Computed by `scripts/ch01_roofline.py`.
+Solving Eq. 1.3 exactly for this shape puts the compute-bound batch at 329 tokens, slightly above the ridge, because activation bytes are not zero. The same step takes 579 µs on v5e and 142 µs on an H100. Computed by `scripts/ch01_roofline.py`.
 
 </Worked>
 
-## Lower-precision weights move the ridge, lower-precision math moves it back
+## Precision moves the ridge
 
 Store the weights in int8 or fp8 and keep the math in bf16. FLOPs stay at $2BDF$, but weight bytes halve to $DF$, so intensity becomes about $2B$:
 
@@ -100,10 +188,39 @@ $$
 
 <Gloss>Halving the bytes per weight halves the batch needed to keep the matrix units busy, as long as the arithmetic rate stays the same.</Gloss>
 
-On Ironwood that takes the compute-bound batch from 329 to 164 for the example shape. Moving the math to fp8 as well doubles $C$ to 4,614 TFLOP/s <Cite id="D-7x" />, so the ridge doubles to 625 and the compute-bound batch returns to 329. The step still gets faster: at batch 64 it drops from 64 µs to 32 µs, because the bytes halved.
+On v5e, int8 weights with bf16 math bring the compute-bound batch from 240 to 120 <Cite id="SB1" at="#a-few-problems-to-work" s="Q2" />. On Ironwood the example shape goes from 329 to 164.
 
-The provisional TPU 8i figures push this further. Its fp8 ridge is about 1,024 FLOP/B <Provisional />, so with fp8 weights and fp8 math, decode on 8i needs more than 550 tokens per chip to be compute-bound for this shape. Google's design answer is bandwidth and on-chip SRAM, not FLOPs: 8,601 GB/s of HBM and 384 MB of SRAM <Cite id="G-8dd" />.
+Moving the math to low precision as well doubles $C$. On Ironwood, fp8 math runs at 4,614 TFLOP/s <Cite id="D-7x" />, so the ridge doubles to 625 and the compute-bound batch returns to 329. The step still gets faster: at batch 64 it drops from 64 µs to 32 µs, because the bytes halved. The batch at which the matrix units saturate is what stays put.
 
-<Interactive caption={<><b>Roofline plotter.</b> One matmul X[B, D] · W[D, F] against a chip's HBM roofline. Change the chip, dtypes and batch to see where the operating point sits relative to the ridge. Hover the plot to read attainable FLOP/s at any intensity. Peaks are from scripts/specs.py; TPU 8 BF16 and FP8 peaks are provisional.</>}>
+The provisional TPU 8i figures push this further. Its fp8 ridge is about 1,024 FLOP/B <Provisional />. With fp8 weights and fp8 math, the example shape needs more than 557 tokens per chip to be compute-bound. Decode batches that large are rare, especially with long contexts, as Chapter 7 shows. Google's design answer for 8i was bandwidth and on-chip SRAM, not FLOPs: 8,601 GB/s of HBM and 384 MB of SRAM <Cite id="G-8dd" />.
+
+<Interactive caption={<><b>Roofline plotter.</b> One matmul X[B, D] · W[D, F] against a chip's HBM roofline. Change the chip, dtypes and batch to see where the operating point sits relative to the ridge. Hover the plot to read attainable FLOP/s at any intensity. Peaks come from scripts/specs.py; TPU 8 BF16 and FP8 peaks are provisional.</>}>
   <RooflinePlotter chip="7x" b={64} />
 </Interactive>
+
+## The same roofline for a network link
+
+Replace HBM with an inter-chip link and the model is unchanged. The Scaling Book's example splits the contracting dimension $D$ of $X[B, D] \cdot W[D, F]$ across two chips <Cite id="SB1" at="#network-communication-rooflines" />. Each chip multiplies its half, $BDF$ FLOPs, then the chips exchange $2BF$ bytes of bf16 partial sums:
+
+$$
+\frac{BDF}{C} > \frac{2BF}{W_\text{link}} \iff D > \frac{2C}{W_\text{link}}
+\tag{1.5}
+$$
+
+<Gloss>Splitting the contracting dimension is worthwhile only if each chip's half of the matmul takes longer than shipping the partial result to the other chip.</Gloss>
+
+The threshold now depends on $D$, not on the batch. On v5e, with 45 GB/s one way per link, it is $D > 8{,}755$ <Cite id="SB1" at="#network-communication-rooflines" />. On Ironwood, the Cloud docs give 200 GB/s per link counting both directions, so 100 GB/s one way <Cite id="D-7x" />. The threshold becomes $D > 46{,}140$ <Derived />: no current model has a hidden dimension that large. Ironwood's FLOPs grew 11.7× over v5e while its per-link bandwidth grew 2.2×. Chapters 5 and 6 work through what that does to tensor parallelism.
+
+## What the HBM roofline leaves out
+
+Three things the model above does not capture, each of which shows up in Chapter 10's profiles.
+
+**Vector-unit work has its own roofline.** Elementwise ops, reductions and softmax run on the VPU, not the matrix units. On v5p the VPU peaks at about 7 TFLOP/s per core, a critical intensity of about 3 <Cite id="SB1" at="#where-does-the-time-go" />. A dot product, at 0.5 FLOP/B, is memory-bound on any chip. These ops are cheap only when XLA fuses them into the matmul that produces or consumes their input.
+
+**Small transfers are latency-bound.** Each ICI hop costs about 1 µs regardless of size. On v5e, any per-hop chunk under about 45 kB spends more time on latency than bandwidth <Cite id="SB3" at="#a-deeper-dive-into-tpu-communication-primitives" />. That is the normal regime for decode-time collectives (Chapter 7).
+
+**Peak is not achievable peak.** The Scaling Book states that H100s and B200s usually reach 80–85% of claimed peak FLOP/s, while TPUs get closer to 95% <Cite id="SB1" at="#where-does-the-time-go" />. The book does not publish the measurements behind those figures, so treat them as practitioner estimates.
+
+<GpuAnalogy title="GPU analogy: MFU">
+<p>Model FLOPs utilization means the same thing on both platforms: useful model FLOPs per second over peak. The difference is where the losses come from. On a GPU they include kernel launch gaps, occupancy limits and L2 misses. On a TPU the whole step is one compiled program. The losses are padding to MXU tiles, unfused VPU work, and communication the compiler failed to overlap.</p>
+</GpuAnalogy>
