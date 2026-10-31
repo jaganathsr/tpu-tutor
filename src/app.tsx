@@ -91,6 +91,7 @@ export function App() {
             <a href={href('/slides/all/0')}>Slides</a>
             <a href={href('/exams')}>Exams</a>
             <a href={href('/review')}>Review flashcards</a>
+            <a href={href('/pytorch-xla-deprecated')}>Moving off PyTorch/XLA</a>
           </nav>
           <nav aria-label="About the site">
             <h2>About</h2>

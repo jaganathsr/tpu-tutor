@@ -1,5 +1,7 @@
 # TPU Deep Dive
 
+**Read the course at [learntpu.dev](https://learntpu.dev).** Moving PyTorch code off PyTorch/XLA? See [PyTorch/XLA is deprecated: what to use instead](https://learntpu.dev/pytorch-xla-deprecated/).
+
 A self-paced course on TPU hardware and software for engineers who already know GPUs. It has 11 chapters: five days of two ~55-minute blocks each, plus a synthesis chapter comparing TPU, GPU and Trainium. Each chapter has prose with inline citations, interactive explainers, a quiz, spaced-repetition flashcards, a teach-back checklist and review slides. There are day exams, a 30-question final, and a whole-course slide deck.
 
 It is a static site (Vite + Preact + MDX) with no backend. Progress is stored in your browser.
@@ -105,7 +107,7 @@ What the build does for search:
 
 - **Per-page metadata:** every chapter is a prerendered page with its full text in the HTML, plus a `<title>`, a meta description (the chapter's `description`), a canonical URL, Open Graph and Twitter card tags, and schema.org JSON-LD (`Course` on the home page; `LearningResource` and `BreadcrumbList` on chapters).
 - **Noindex app pages:** quiz, flashcard, teach-back, review, exam, slide and data pages are prerendered with `noindex`.
-- **Sitemap:** `sitemap.xml` lists the 16 indexable URLs (home, Sources, About, Privacy, Terms and 11 chapters).
+- **Sitemap:** `sitemap.xml` lists the 17 indexable URLs (home, Sources, About, Privacy, Terms, the PyTorch/XLA guide and 11 chapters).
 - **Share image:** `public/og.png`, rendered from `scripts/og-card.html`; the re-render command is in that file.
 - **Code splitting:** each chapter's content is its own JavaScript chunk.
 

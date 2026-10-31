@@ -457,6 +457,7 @@ body.deck-mode .site-footer { display: none; }
 .slide-body li::marker { color: var(--dayc); }
 .slide-body table { font-size: 1.45cqw; margin: 0.6cqw 0; }
 .slide-body .table-wrap { margin: 0.6cqw 0; }
+.slide-body .table-wrap { margin: 0.6cqw 0; }
 .slide-body .katex-display { margin: 1cqw 0 0.4cqw; }
 .slide-body .gloss { font-size: 1.5cqw; margin-bottom: 1.2cqw; }
 .slide-body .callout { margin: 1cqw 0; padding: 1cqw 1.4cqw 0.3cqw; }

@@ -1,5 +1,5 @@
 // Components available inside chapter MDX without imports.
-import type { ComponentChildren } from 'preact';
+import type { ComponentChildren, JSX } from 'preact';
 import sources from '../generated/sources.json';
 import chips from '../generated/chips.json';
 import { si } from '../lib/format';
@@ -191,6 +191,12 @@ export function ChipTable({ chips: ids, cols }: { chips: string; cols: string })
 }
 
 export const mdxComponents = {
+  // Markdown tables scroll inside the text column instead of widening the page on phones.
+  table: (props: JSX.HTMLAttributes<HTMLTableElement>) => (
+    <div class="table-wrap">
+      <table {...props} />
+    </div>
+  ),
   Cite,
   Gloss,
   GpuAnalogy,

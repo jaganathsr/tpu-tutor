@@ -1,0 +1,84 @@
+---
+title: "PyTorch/XLA is deprecated: what to use instead"
+description: "PyTorch/XLA is archived on 2026-11-15. Which replacement to use for training, serving and existing ports on TPU: TorchTPU, vllm-torchtpu, vLLM JAX, torchax."
+updated: 2026-10-31
+---
+
+**Short answer.** For PyTorch on TPU, use **TorchTPU** (`torch_tpu`). For serving a PyTorch model with vLLM, use **vllm-torchtpu**. If your model is already written in JAX, serve it with **vLLM JAX** (the renamed tpu-inference). Existing torchax ports keep running, but new PyTorch-native work no longer goes there.
+
+The status below was checked against each project's README and PyPI on 31 October 2026. These projects are moving quickly; check the linked pages before you plan a migration.
+
+## What happened
+
+- **PyTorch/XLA is deprecated.** Its README says: "This project is deprecated and replaced by TorchTPU. The PyTorch/XLA repo will be archived on November 15, 2026. Please start new PyTorch TPU workloads with TorchTPU and migrate existing PyTorch/XLA workloads to TorchTPU" <Cite id="T-xla" />. Google's Cloud TPU documentation says the same: "TorchTPU replaces PyTorch/XLA" <Cite id="D-pytorch" />. The last `torch_xla` release on PyPI is 2.9.0, from 2025-11-17.
+- **TorchTPU is open source.** Google described it in April 2026 and released it on 2026-10-20, built with Meta's PyTorch team <Cite id="T-blog1" /> <Cite id="T-oss" />. The current release is `torch_tpu` 0.2.0 (2026-10-19) <Cite id="T-repo" />.
+- **vLLM on TPU split in two.** tpu-inference "is now vLLM JAX (`vllm-jax`) and is focused on serving JAX models on TPU." Its README adds that "PyTorch-native TPU serving has moved to its own project, vllm-torchtpu ... where all future PyTorch-native TPU support in vLLM will live" <Cite id="R-tpuinf" />. vllm-torchtpu calls itself "the recommended path for serving PyTorch model definitions on TPU" <Cite id="R-vllm-torchtpu" />. SGLang made the same split into sglang-jax and sglang-torchtpu <Cite id="T-engines" />.
+
+## Which path to use
+
+| Your situation | Use | Notes |
+|---|---|---|
+| New PyTorch training or research code | **TorchTPU** | Eager by default, `torch.compile(backend="tpu")` for speed, standard `torch.distributed` |
+| Existing PyTorch/XLA training code | **TorchTPU** | Mostly removals; see the mapping below |
+| Serving a PyTorch model (vLLM model definition or Hugging Face) | **vllm-torchtpu** | `pip install vllm-torchtpu`, Python 3.12; v7x recommended and CI-tested, v6e supported, v5e and v5p experimental |
+| Serving a model written in JAX / Flax NNX | **vLLM JAX** (tpu-inference) | Still maintained; the repository is moving to `vllm-project/vllm-jax` |
+| An existing tpu-inference torchax port (`MODEL_IMPL_TYPE=vllm`) | Keep it running; plan a move to vllm-torchtpu | The torchax path still exists in tpu-inference, but future PyTorch-native work is in vllm-torchtpu |
+| Training at scale in JAX already | **MaxText**, unchanged | Not affected by the PyTorch changes |
+
+Sources: <Cite id="R-vllm-torchtpu" />, <Cite id="R-tpuinf" />, <Cite id="T-engines" />, <Cite id="T-oss" />.
+
+## What is different about TorchTPU
+
+PyTorch/XLA put tensors on a lazy `xla` device. Every op was recorded into a graph, and nothing ran until you called `mark_step` (later `torch_xla.sync()` or `torch_xla.step()`). That made every Python-side branch, print or `.item()` a potential graph break and recompile.
+
+TorchTPU is an out-of-tree backend on PyTorch's `PrivateUse1` dispatch key, renamed `tpu`. Tensors are ordinary PyTorch tensors on `torch.device("tpu")`, with "no subclasses, no wrappers" <Cite id="T-how" />. Code runs eagerly, like on a GPU, and you choose how much to compile <Cite id="T-exec" />:
+
+- **Strict eager** (default): every op is compiled on its own at a low optimization level and dispatched asynchronously. It is easy to debug, but small ops leave gaps on the chip.
+- **Debug eager** (`TORCH_TPU_LAUNCH_BLOCKING=1`): the host waits after every op, so errors point at the line that caused them. This is the counterpart of `CUDA_LAUNCH_BLOCKING=1`.
+- **Fused eager** (`TORCH_TPU_DEFER_AND_FUSE=1`): ops are deferred until a sync point and compiled together as one graph.
+- **`torch.compile(model, backend="tpu")`**: Dynamo captures an FX graph, which is lowered to one StableHLO program and compiled by XLA. TorchTPU "does not use TorchInductor."
+
+Distributed training uses a `tpu_dist` process group with one process per TPU device, as on GPUs. DDP, FSDP2, DTensor and SimpleFSDP work on it. Collectives are lowered into the XLA program as StableHLO ops; there is no NCCL-like library <Cite id="T-dist" />. Custom Pallas kernels written in JAX are registered with `torch.tpu.pallas.jax_op` <Cite id="T-kern" />.
+
+[Chapter 9](/ch/ch09/#torchtpu) explains each of these in depth, including the SPMD handshake that PyTorch's per-rank model needs and JAX does not.
+
+## Mapping PyTorch/XLA code to TorchTPU
+
+There is no official migration guide yet. The left column comes from the PyTorch/XLA README <Cite id="T-xla" />; the right column from the TorchTPU documentation <Cite id="T-how" /> <Cite id="T-exec" /> <Cite id="T-dist" /> <Cite id="T-kern" />. Test each change; the TorchTPU API is at version 0.2.
+
+| PyTorch/XLA | TorchTPU |
+|---|---|
+| `import torch_xla` | `import torch_tpu` (autoloads the backend) |
+| `model.to('xla')`, `tensor.to('xla')` | `.to('tpu')`, or `torch.device("tpu")` |
+| `with torch_xla.step():` around each step, `torch_xla.sync()`, `xm.mark_step()` | Remove them. Eager is the default; use fused eager or `torch.compile(backend="tpu")` for speed. |
+| `torch.compile(backend="openxla")` | `torch.compile(backend="tpu")` |
+| `torch_xla.launch(fn)` or `xmp.spawn(fn)` | `torchrun`, one process per TPU device, as on GPUs. The environment must give the slice topology (`TORCH_TPU_TOPOLOGY`, `TORCH_TPU_SLICEBUILDER_ADDRESSES`, `WORLD_SIZE`) before initialisation <Cite id="T-dist" />. |
+| `dist.init_process_group("xla", init_method="xla://")` | `dist.init_process_group(backend="tpu_dist")` |
+| `xm.optimizer_step(optimizer)` | `optimizer.step()`, with gradients reduced by DDP or FSDP2 as on GPU |
+| SPMD mode (`xs.mark_sharding`, a single process driving all devices) | DTensor and FSDP2 over a DeviceMesh; `torch.tpu.distributed.topology_aware_mesh()` builds one aligned with the ICI rings |
+| Pallas kernels via `torch_xla[pallas]` | `torch.tpu.pallas.jax_op`, or Tokamax kernels |
+
+The biggest change in habits: with PyTorch/XLA you avoided anything that forced a sync, because it cut the graph. Under TorchTPU's eager modes that code is correct, just slower. Under `torch.compile`, the usual Dynamo rules about graph breaks apply. Data-dependent shapes still cause recompilation in every mode, because XLA compiles for fixed shapes <Cite id="T-exec" />.
+
+## If you are on torchax
+
+torchax runs PyTorch code by wrapping JAX arrays in a `torch.Tensor` subclass, so `jax.jit` can trace it. It moved to `google/torchax` in October 2025 and its last release is 0.0.13 (2026-06-17) <Cite id="R-torchax" />. Its README does not say it is deprecated. Two things changed around it:
+
+- vLLM's PyTorch serving moved from tpu-inference's torchax path to vllm-torchtpu, which runs on TorchTPU, not torchax <Cite id="R-vllm-torchtpu" />.
+- For PyTorch code that does not need to interoperate with JAX, TorchTPU is now Google's documented path <Cite id="D-pytorch" />.
+
+If your port relies on JAX tooling, such as JAX sharding annotations or Qwix quantization, torchax still gives you that. [Chapter 8](/ch/ch08/#torchax-pytorch-code-jax-execution) covers the torchax serving path and when it still makes sense.
+
+## Performance claims
+
+Published TorchTPU figures so far come from Google and the PyTorch team. The PyTorch blog reports Qwen3-MoE-235B training at 27.1% MFU on 8,192 TPU v7 chips, and 59% prefill MFU for a 30B model on one chip <Cite id="T-pt" />. A widely repeated "52% MFU on 8,192 chips" figure does not appear in the primary sources <Unverified />. The vLLM team reported 3.6x (Llama-3.1-8B on v6e-1) and 2.1x (70B on v6e-8) throughput over the old PyTorch/XLA serving backend <Cite id="B-vllmtpu" />. None of these is an independent benchmark; measure your own model.
+
+## Going further
+
+This page is part of [TPU Deep Dive](/), a free course on TPUs for engineers who already know GPUs. The most relevant chapters:
+
+- [Chapter 8: The TPU serving stack](/ch/ch08/): vLLM on TPU, torchax, vllm-torchtpu, Ragged Paged Attention and the KV-cache layout.
+- [Chapter 9: From Python to the MXU](/ch/ch09/): jaxpr, StableHLO, XLA, Shardy, and TorchTPU in detail.
+- [Chapter 11: TPU and GPU architecture, side by side](/ch/ch11/): how TorchTPU compares with CUDA PyTorch and AWS's TorchNeuron.
+
+Found something wrong or out of date? [Open an issue](https://github.com/jaganathsr/tpu-tutor/issues/new).

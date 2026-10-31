@@ -40,7 +40,7 @@ a:hover { text-decoration-thickness: 2px; }
 strong { font-weight: 650; }
 
 code, kbd, pre, samp { font-family: var(--font-mono); font-size: 0.86em; font-variant-numeric: tabular-nums; }
-code { background: var(--paper-2); padding: 0.08em 0.3em; border-radius: var(--radius); }
+code { background: var(--paper-2); padding: 0.08em 0.3em; border-radius: var(--radius); overflow-wrap: anywhere; }
 pre { background: var(--paper-2); padding: 0.9rem 1rem; overflow-x: auto; line-height: 1.5; border-radius: var(--radius); }
 pre code { background: none; padding: 0; }
 kbd {

@@ -79,21 +79,23 @@ export function GenerationChart() {
         <span><i style="border-color: var(--s1)" />Dense BF16 FLOP/s per chip</span>
         <span><i style="border-color: var(--s2)" />HBM bandwidth per chip</span>
       </div>
-      <table class="spec-table" style="margin-top:.8rem">
-        <thead>
-          <tr><th>Chip</th><th class="r">BF16 TFLOP/s</th><th class="r">HBM GB/s</th><th class="r">Ridge, FLOP/B</th></tr>
-        </thead>
-        <tbody>
-          {GEN.map((g) => (
-            <tr>
-              <td>{g.name} ({g.year})</td>
-              <td class="r">{g.tf.toLocaleString('en-US')}</td>
-              <td class="r">{g.bw.toLocaleString('en-US')}</td>
-              <td class="r">{Math.round((g.tf * 1000) / g.bw)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div class="table-wrap" style="margin-top:.8rem">
+        <table class="spec-table">
+          <thead>
+            <tr><th>Chip</th><th class="r">BF16 TFLOP/s</th><th class="r">HBM GB/s</th><th class="r">Ridge, FLOP/B</th></tr>
+          </thead>
+          <tbody>
+            {GEN.map((g) => (
+              <tr>
+                <td>{g.name} ({g.year})</td>
+                <td class="r">{g.tf.toLocaleString('en-US')}</td>
+                <td class="r">{g.bw.toLocaleString('en-US')}</td>
+                <td class="r">{Math.round((g.tf * 1000) / g.bw)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
