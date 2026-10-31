@@ -7,7 +7,11 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const SITE = (process.env.SITE_URL ?? 'https://jaganathsr.github.io/tpu-tutor').replace(/\/$/, '');
+const SITE = (process.env.SITE_URL ?? 'https://learntpu.dev').replace(/\/$/, '');
+// Umami analytics (cookieless). Injected only when a website ID is configured.
+const UMAMI_ID = process.env.UMAMI_WEBSITE_ID?.trim();
+const UMAMI_SRC = process.env.UMAMI_SRC ?? 'https://cloud.umami.is/script.js';
+const umamiTag = UMAMI_ID ? `<script defer src="${UMAMI_SRC}" data-website-id="${UMAMI_ID}"></script>` : '';
 const DIST = 'dist';
 const { render, routes, course, preload } = await import(pathToFileURL(join(process.cwd(), 'dist-ssr/entry-server.js')).href);
 
@@ -85,6 +89,7 @@ function head(r) {
     `<meta name="twitter:description" content="${esc(r.description)}" />`,
     `<meta name="twitter:image" content="${SITE}/og.png" />`,
   ];
+  if (umamiTag) tags.push(umamiTag);
   const ld = jsonLd(r);
   if (ld) tags.push(`<script type="application/ld+json">${JSON.stringify(ld).replace(/</g, '\\u003c')}</script>`);
   return tags.filter(Boolean).join('\n    ');
@@ -110,7 +115,7 @@ for (const r of all) {
 // 404.html: GitHub Pages serves it for any unlisted path; the app renders from location.pathname.
 writeFileSync(
   join(DIST, '404.html'),
-  template.replace(/<!--head:start-->[\s\S]*?<!--head:end-->/, `<title>TPU Deep Dive</title>\n    <meta name="robots" content="noindex" />`),
+  template.replace(/<!--head:start-->[\s\S]*?<!--head:end-->/, `<title>TPU Deep Dive</title>\n    <meta name="robots" content="noindex" />${umamiTag ? '\n    ' + umamiTag : ''}`),
 );
 
 const today = new Date().toISOString().slice(0, 10);
@@ -120,4 +125,6 @@ ${all.filter((r) => r.index).map((r) => `  <url><loc>${urlFor(r.path)}</loc><las
 </urlset>
 `;
 writeFileSync(join(DIST, 'sitemap.xml'), sitemap);
-console.log(`prerendered ${n} routes for ${SITE}; sitemap has ${all.filter((r) => r.index).length} URLs`);
+// robots.txt is only read at a domain root, so write it only when the site is served from one.
+if (new URL(SITE).pathname === '/') writeFileSync(join(DIST, 'robots.txt'), `User-agent: *\nAllow: /\n\nSitemap: ${SITE}/sitemap.xml\n`);
+console.log(`prerendered ${n} routes for ${SITE}; sitemap has ${all.filter((r) => r.index).length} URLs; umami ${UMAMI_ID ? 'on' : 'off'}`);

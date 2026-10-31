@@ -56,8 +56,9 @@ function contentYaml(): Plugin {
 
 export default defineConfig({
   // Absolute base: pages live at nested paths (/ch/ch07/), so assets cannot be
-  // relative. CI sets BASE_PATH=/tpu-tutor/ for GitHub Pages; local builds use /.
+  // relative. CI sets BASE_PATH (/ for learntpu.dev); local builds default to /.
   base: process.env.BASE_PATH ?? '/',
+  define: { __ANALYTICS__: JSON.stringify(Boolean(process.env.UMAMI_WEBSITE_ID?.trim())) },
   plugins: [
     contentYaml(),
     {

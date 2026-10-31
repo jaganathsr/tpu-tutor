@@ -1,3 +1,6 @@
+/** True when the build includes the Umami script (UMAMI_WEBSITE_ID set). */
+declare const __ANALYTICS__: boolean;
+
 declare module '*.yaml' {
   const data: any;
   export default data;

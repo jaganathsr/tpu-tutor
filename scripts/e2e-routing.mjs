@@ -1,10 +1,11 @@
 // End-to-end check of path routing on a production build served under a base
 // path, as on GitHub Pages:
-//   BASE_PATH=/tpu-tutor/ npm run build && BASE_PATH=/tpu-tutor/ npx vite preview --port 4174 &
-//   BASE=http://localhost:4174/tpu-tutor node scripts/e2e-routing.mjs
+//   npm run build && npx vite preview --port 4174 &
+//   BASE=http://localhost:4174 node scripts/e2e-routing.mjs
+// (or against the live site: BASE=https://learntpu.dev)
 import { chromium } from 'playwright-core';
 
-const B = process.env.BASE ?? 'http://localhost:4174/tpu-tutor';
+const B = (process.env.BASE ?? 'http://localhost:4174').replace(/\/$/, '');
 const b = await chromium.launch({ executablePath: process.env.CHROME ?? '/usr/bin/google-chrome' });
 const p = await b.newPage();
 const errs = [];

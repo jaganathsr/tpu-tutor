@@ -25,8 +25,10 @@ Two environment variables control URLs:
 
 | Variable | Default | Pages value (set in the workflow) |
 |---|---|---|
-| `BASE_PATH` | `/` | `/tpu-tutor/` |
-| `SITE_URL` | `https://jaganathsr.github.io/tpu-tutor` | same |
+| `BASE_PATH` | `/` | `/` |
+| `SITE_URL` | `https://learntpu.dev` | same |
+| `UMAMI_WEBSITE_ID` | unset (no analytics) | repository variable `UMAMI_WEBSITE_ID` |
+| `UMAMI_SRC` | `https://cloud.umami.is/script.js` | set only for self-hosted Umami |
 
 ## Publish on GitHub Pages
 
@@ -34,7 +36,9 @@ Two environment variables control URLs:
 2. In the repository settings, under Pages, set Source to **GitHub Actions**.
 3. `.github/workflows/pages.yml` runs `npm run check` and `npm run build` on every push and publishes `dist/`.
 
-Pages are real paths (`/tpu-tutor/ch/ch07/`), each prerendered to static HTML. Routes that are not prerendered, such as individual slide numbers, are served by `404.html`, which boots the app and renders from the URL. Old `#/…` links redirect to the matching path. If you rename the repository, change `BASE_PATH` and `SITE_URL` in `.github/workflows/pages.yml`.
+Pages are real paths (`https://learntpu.dev/ch/ch07/`), each prerendered to static HTML. Routes that are not prerendered, such as individual slide numbers, are served by `404.html`, which boots the app and renders from the URL. Old `#/…` links redirect to the matching path. The custom domain is set by `public/CNAME` and in the repository's Pages settings. To serve from a project path instead, such as `https://user.github.io/repo/`, set `BASE_PATH=/repo/` and `SITE_URL` in `.github/workflows/pages.yml`.
+
+**Analytics.** Set a repository variable `UMAMI_WEBSITE_ID` (Settings → Secrets and variables → Actions → Variables) and re-run the workflow. The Umami script is then added to every page, and the Your data page says that page views are counted. Without the variable, no analytics script is included.
 
 ## Using the course
 
@@ -108,11 +112,11 @@ What the build does for search:
 What only you can do:
 
 1. **Submit the site to Google Search Console** (search.google.com/search-console).
-   - Add the URL-prefix property `https://jaganathsr.github.io/tpu-tutor/`.
+   - Add a Domain property for `learntpu.dev`, verified with a DNS TXT record at the registrar, or a URL-prefix property `https://learntpu.dev/`.
    - Verify it with the HTML-tag method: add the `<meta name="google-site-verification" …>` tag inside the `<!--head:start-->` block of `index.html`, push, then click Verify.
-   - Submit `https://jaganathsr.github.io/tpu-tutor/sitemap.xml`.
+   - Submit `https://learntpu.dev/sitemap.xml`.
 2. **Do the same in Bing Webmaster Tools.** It can import the Search Console property.
-3. A project site cannot serve `robots.txt`: crawlers only read it at the domain root, `jaganathsr.github.io/robots.txt`. The sitemap therefore has to be submitted directly, as above.
+3. `robots.txt` is generated at the domain root and points to the sitemap. It is only written when `SITE_URL` has no path.
 4. **Links bring the most traffic:** the GitHub repository's description and website field, topics, and posts linking to individual chapters.
 
 ## Sources and numbers
@@ -141,8 +145,8 @@ What only you can do:
 npm run check                          # content lint and contrast
 npm run build && npm run preview &     # then:
 npm run test:e2e                       # keyboard-driven quiz, flashcard and teach-back flows in Chrome
-BASE_PATH=/tpu-tutor/ npm run build && BASE_PATH=/tpu-tutor/ npx vite preview --port 4174 &
-BASE=http://localhost:4174/tpu-tutor npm run test:routing   # paths, links, back button, legacy #/ redirect
+npx vite preview --port 4174 &
+BASE=http://localhost:4174 npm run test:routing   # or BASE=https://learntpu.dev   # paths, links, back button, legacy #/ redirect
 ```
 
 `test:e2e` uses `playwright-core` with the system Chrome (`CHROME=/path/to/chrome` to override).

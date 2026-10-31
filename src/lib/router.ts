@@ -1,10 +1,10 @@
-// Path routing under Vite's base URL (e.g. /tpu-tutor/ch/ch07/). Every
+// Path routing under Vite's base URL (e.g. /ch/ch07/ on learntpu.dev). Every
 // indexable route is prerendered to static HTML at build time
 // (scripts/prerender.mjs); other routes fall back to 404.html, which boots the
 // app and renders from location.pathname. Old #/ links are redirected.
 import { useEffect, useState } from 'preact/hooks';
 
-const BASE = import.meta.env.BASE_URL.replace(/\/$/, ''); // '' or '/tpu-tutor'
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, ''); // '' at a domain root, or e.g. '/tpu-tutor' under a project path
 let ssrPath: string | null = null;
 
 /** Used by the prerenderer: render as if the browser were at `path`. */

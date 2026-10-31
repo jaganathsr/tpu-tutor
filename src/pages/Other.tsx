@@ -141,6 +141,11 @@ export function Data() {
         Progress, quiz attempts, teach-back attempts and flashcard schedules are stored in this browser only (localStorage key
         tpudd:v1). Export to move them to another browser or keep a backup.
       </p>
+      {__ANALYTICS__ ? (
+        <p class="ui muted">
+          The site counts page views with Umami, which sets no cookies and collects no personal data. Your course progress is never sent anywhere.
+        </p>
+      ) : null}
       <h2>Progress</h2>
       <div class="btn-row">
         <button class="btn" onClick={() => download(`tpu-deep-dive-progress-${stamp()}.json`, JSON.stringify(getState(), null, 1), 'application/json')}>

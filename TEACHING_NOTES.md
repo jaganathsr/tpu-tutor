@@ -1,6 +1,6 @@
 # Teaching notes: TPUs for GPU engineers in 90 minutes
 
-Audience: engineers fluent in CUDA, NCCL and H100/B200 performance. Goal: by the end they can predict whether a TPU workload is compute-, memory- or communication-bound, read a TPU profile, and say where TPU and GPU designs differ and why. Open the course site and the whole-course deck (`/slides/all/0/` on https://jaganathsr.github.io/tpu-tutor/) before starting; the demos are the interactives named below.
+Audience: engineers fluent in CUDA, NCCL and H100/B200 performance. Goal: by the end they can predict whether a TPU workload is compute-, memory- or communication-bound, read a TPU profile, and say where TPU and GPU designs differ and why. Open the course site and the whole-course deck (`/slides/all/0/` on https://learntpu.dev) before starting; the demos are the interactives named below.
 
 ## Agenda
 
