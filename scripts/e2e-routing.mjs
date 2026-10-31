@@ -40,6 +40,15 @@ await p.locator('.toc a').nth(2).click();
 await p.waitForTimeout(300);
 console.log('TOC anchor:', path(), '| scrolled:', await p.evaluate(() => scrollY > 0));
 
+// Slides reached by an in-app link load their code after the first render; a slide must still be shown.
+await p.goto(`${B}/`);
+await p.waitForTimeout(600);
+await p.locator('header a', { hasText: 'Slides' }).click();
+await p.waitForTimeout(1200);
+const shown = await p.locator('.slide[data-active]').count();
+console.log('slides via link:', path(), '| shown:', shown, '|', (await p.locator('.deck-pos').textContent())?.trim());
+if (shown !== 1) errs.push('slides via link: no active slide');
+
 await p.goto(`${B}/slides/all/5/`);
 await p.waitForTimeout(1200);
 console.log('slides deck:', await p.locator('.deck-pos').textContent());

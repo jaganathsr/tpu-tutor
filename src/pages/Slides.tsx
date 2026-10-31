@@ -58,7 +58,9 @@ export function SlidesPage({ scope, n }: { scope: string; n: number }) {
 
   const go = (i: number) => navigate(`/slides/${scope}/${Math.max(0, Math.min(i, count - 1))}`);
 
-  // Show the current slide and colour it by its chapter's day.
+  // Show the current slide and colour it by its chapter's day. Re-run when the
+  // lazily loaded slide modules arrive (list.length), since the deck is not in
+  // the DOM while they load.
   useLayoutEffect(() => {
     const slides = [...(deckRef.current?.querySelectorAll<HTMLElement>('.slide') ?? [])];
     setCount(slides.length);
@@ -72,7 +74,7 @@ export function SlidesPage({ scope, n }: { scope: string; n: number }) {
       s.toggleAttribute('data-active', i === idx);
       if (i === idx) setLabel(s.dataset.label);
     });
-  }, [scope, idx, count]);
+  }, [scope, idx, count, list.length]);
 
   const keyRef = useRef<(e: KeyboardEvent) => void>(() => {});
   keyRef.current = (e: KeyboardEvent) => {
