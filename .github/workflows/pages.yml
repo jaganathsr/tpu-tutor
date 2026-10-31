@@ -24,6 +24,9 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm run build
+        env:
+          BASE_PATH: /tpu-tutor/
+          SITE_URL: https://jaganathsr.github.io/tpu-tutor
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

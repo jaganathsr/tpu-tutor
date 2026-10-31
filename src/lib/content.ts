@@ -4,6 +4,7 @@
 import type { ComponentType } from 'preact';
 import course from '../../content/course.yaml';
 import exams from '../../content/exams.yaml';
+import chaptersMeta from '../generated/chapters-meta.json';
 
 export interface SourceRef { id: string; anchor?: string; label?: string }
 
@@ -16,6 +17,7 @@ export interface ChapterMeta {
   minutes: number;
   written: boolean;
   status?: string;
+  description?: string;
   objectives: string[];
   teachback: string[];
   sources: SourceRef[];
@@ -53,8 +55,10 @@ export interface ExamDef {
 
 type MdxModule = { default: ComponentType<{ components?: Record<string, unknown> }>; frontmatter: Record<string, any> };
 
-const mdx = import.meta.glob<MdxModule>('../../content/chapters/*/index.mdx', { eager: true });
-const slideFiles = import.meta.glob<MdxModule>('../../content/chapters/*/slides.mdx', { eager: true });
+// Chapter and slide MDX are code-split: one chunk each, loaded on demand.
+// Frontmatter comes from src/generated/chapters-meta.json (scripts/build-sources.mjs).
+const mdxLoaders = import.meta.glob<MdxModule>('../../content/chapters/*/index.mdx');
+const slideLoaders = import.meta.glob<MdxModule>('../../content/chapters/*/slides.mdx');
 const quizFiles = import.meta.glob<Question[]>('../../content/chapters/*/quiz.yaml', { eager: true, import: 'default' });
 const cardFiles = import.meta.glob<Card[]>('../../content/chapters/*/cards.yaml', { eager: true, import: 'default' });
 
@@ -63,22 +67,45 @@ const dirOf = (path: string) => path.split('/').slice(-2, -1)[0];
 const byDir = <T,>(files: Record<string, T>) =>
   Object.fromEntries(Object.entries(files).map(([p, v]) => [dirOf(p), v]));
 
-const mdxByDir = byDir(mdx);
 const quizByDir = byDir(quizFiles);
-const slidesByDir = byDir(slideFiles);
 const cardsByDir = byDir(cardFiles);
+const loadersByDir = byDir(mdxLoaders);
+const slideLoadersByDir = byDir(slideLoaders);
+const loadedMdx: Record<string, MdxModule> = {};
+const loadedSlides: Record<string, MdxModule> = {};
 
 export const chapters: ChapterMeta[] = (course.chapters as any[]).map((c) => {
-  const fm = mdxByDir[c.id]?.frontmatter ?? {};
+  const fm = (chaptersMeta as Record<string, any>)[c.id] ?? {};
   return {
     objectives: [],
     teachback: [],
     sources: [],
     ...c,
     ...fm,
-    written: Boolean(mdxByDir[c.id]),
+    written: Boolean(chaptersMeta[c.id as keyof typeof chaptersMeta]),
   };
 });
+
+export async function loadChapter(id: string) {
+  if (!loadedMdx[id] && loadersByDir[id]) loadedMdx[id] = await loadersByDir[id]();
+  return loadedMdx[id]?.default;
+}
+
+export async function loadSlides(ids: string[]) {
+  await Promise.all(ids.map(async (id) => {
+    if (!loadedSlides[id] && slideLoadersByDir[id]) loadedSlides[id] = await slideLoadersByDir[id]();
+  }));
+}
+
+/** Load whatever the page at `path` renders, before first render (client boot and prerender). */
+export async function preloadForPath(path: string) {
+  const parts = path.split('/').filter(Boolean);
+  if (parts[0] === 'ch' && parts[1]) await loadChapter(parts[1]);
+  if (parts[0] === 'slides') {
+    const scope = parts[1] ?? 'all';
+    await loadSlides(scope === 'all' ? chapters.filter((c) => c.written).map((c) => c.id) : [scope]);
+  }
+}
 
 export const courseInfo = course as { title: string; summary: string; days: { day: number; theme: string }[] };
 
@@ -86,12 +113,19 @@ export function chapter(id: string) {
   return chapters.find((c) => c.id === id);
 }
 
+/** The chapter's MDX component if already loaded (see loadChapter / preloadForPath). */
 export function chapterContent(id: string) {
-  return mdxByDir[id]?.default;
+  return loadedMdx[id]?.default;
 }
 
+/** Whether the chapter has slides, from build-time metadata. */
+export function hasSlides(id: string) {
+  return Boolean((chaptersMeta as Record<string, any>)[id]?.hasSlides);
+}
+
+/** The chapter's slides component if already loaded. */
 export function chapterSlides(id: string) {
-  return slidesByDir[id]?.default;
+  return loadedSlides[id]?.default;
 }
 
 export function questions(id: string): Question[] {

@@ -44,3 +44,16 @@ for (const line of text.split('\n')) {
 mkdirSync('src/generated', { recursive: true });
 writeFileSync('src/generated/sources.json', JSON.stringify(sources, null, 1));
 console.log(`sources.json: ${Object.keys(sources).length} sources`);
+
+// Chapter frontmatter, so the app can list chapters without loading their MDX.
+import { existsSync, readdirSync } from 'node:fs';
+import { load as loadYaml } from 'js-yaml';
+const meta = {};
+for (const id of readdirSync('content/chapters')) {
+  const f = `content/chapters/${id}/index.mdx`;
+  if (!existsSync(f)) continue;
+  const fm = readFileSync(f, 'utf8').match(/^---\n([\s\S]*?)\n---/);
+  meta[id] = { ...(fm ? loadYaml(fm[1]) : {}), hasSlides: existsSync(`content/chapters/${id}/slides.mdx`) };
+}
+writeFileSync('src/generated/chapters-meta.json', JSON.stringify(meta, null, 1));
+console.log(`chapters-meta.json: ${Object.keys(meta).length} chapters`);

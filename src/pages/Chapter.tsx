@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { cards, chapter, chapterContent, chapterSlides, questions, type ChapterMeta } from '../lib/content';
+import { cards, chapter, chapterContent, chapters, hasSlides, loadChapter, questions, type ChapterMeta } from '../lib/content';
 import { href } from '../lib/router';
 import { chapterState, mutChapter, update, useStore } from '../lib/storage';
 import { useTimeTracker } from '../lib/progress';
@@ -45,20 +45,33 @@ function Toc({ root }: { root: HTMLElement | null }) {
     <ul class="toc">
       {items.map((it) => (
         <li class={`depth-${it.depth}`}>
-          {/* Hash routing owns location.hash, so headings are scrolled to directly. */}
-          <a href="javascript:void 0" onClick={() => document.getElementById(it.id)?.scrollIntoView({ block: 'start' })}>
-            {it.text}
-          </a>
+          <a href={`#${it.id}`}>{it.text}</a>
         </li>
       ))}
     </ul>
   );
 }
 
+function ChapterNav({ ch }: { ch: ChapterMeta }) {
+  const i = chapters.findIndex((c) => c.id === ch.id);
+  const prev = chapters[i - 1], next = chapters[i + 1];
+  return (
+    <nav class="chapter-nav" aria-label="Previous and next chapter">
+      {prev ? <a href={href(`/ch/${prev.id}`)}>Previous: Chapter {prev.number}. {prev.title}</a> : <span />}
+      {next ? <a href={href(`/ch/${next.id}`)}>Next: Chapter {next.number}. {next.title}</a> : <span />}
+    </nav>
+  );
+}
+
 export function ChapterPage({ id, tab }: { id: string; tab: Tab }) {
   const s = useStore();
   const ch = chapter(id);
+  const [, setLoaded] = useState(0);
   const Content = chapterContent(id);
+  // Chapter MDX is a separate chunk; load it when navigating here in-app.
+  useEffect(() => {
+    if (!chapterContent(id)) loadChapter(id).then(() => setLoaded((n) => n + 1));
+  }, [id]);
   const mainRef = useRef<HTMLDivElement>(null);
   const [root, setRoot] = useState<HTMLElement | null>(null);
   useTimeTracker(ch?.written ? id : undefined);
@@ -115,6 +128,8 @@ export function ChapterPage({ id, tab }: { id: string; tab: Tab }) {
 
           {!ch.written ? (
             <p class="empty">This chapter is not written yet. It is planned in research/syllabus.md.</p>
+          ) : tab === 'read' && !Content ? (
+            <p class="ui muted">Loading the chapter.</p>
           ) : tab === 'read' && Content ? (
             <>
               <article class="prose">
@@ -143,13 +158,14 @@ export function ChapterPage({ id, tab }: { id: string; tab: Tab }) {
                   Next: <a href={href(`/ch/${id}/quiz`)}>take the quiz</a>, then{' '}
                   <a href={href(`/ch/${id}/cards`)}>review the flashcards</a> and{' '}
                   <a href={href(`/ch/${id}/teach`)}>write your teach-back</a>.
-                  {chapterSlides(id) ? (
+                  {hasSlides(id) ? (
                     <>
                       {' '}
                       For a fast review later, <a href={href(`/slides/${id}/0`)}>open this chapter's slides</a>.
                     </>
                   ) : null}
                 </p>
+                <ChapterNav ch={ch} />
               </div>
             </>
           ) : tab === 'quiz' ? (

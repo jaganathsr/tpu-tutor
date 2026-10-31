@@ -7,7 +7,7 @@ import { load } from 'js-yaml';
 const b = await chromium.launch({ executablePath: process.env.CHROME ?? '/usr/bin/google-chrome' });
 const p = await b.newPage();
 const errs = []; p.on('pageerror', e => errs.push(e.message)); p.on('console', m => m.type()==='error' && errs.push(m.text()));
-await p.goto('http://localhost:4173/#/ch/ch01/quiz');
+await p.goto('http://localhost:4173/ch/ch01/quiz/');
 // Answer every question from the YAML: correct option, exact number, or a sentence.
 const quiz = load(readFileSync('content/chapters/ch01/quiz.yaml', 'utf8'));
 const verdicts = [];
@@ -32,18 +32,18 @@ const score = await p.locator('.quiz p.ui').textContent();
 const [v1, v2, v3, v4] = verdicts;
 await p.screenshot({ path: 'docs/screenshots/quiz-result-light.png' });
 // flashcards
-await p.goto('http://localhost:4173/#/ch/ch01/cards');
+await p.goto('http://localhost:4173/ch/ch01/cards/');
 await p.keyboard.press(' ');
 const ivl = await p.locator('.grades .ivl').allTextContents();
 await p.screenshot({ path: 'docs/screenshots/cards-flipped-light.png' });
 await p.keyboard.press('3'); await p.waitForTimeout(200);
 const left = await p.locator('.deck-head').textContent();
 // teach-back
-await p.goto('http://localhost:4173/#/ch/ch01/teach');
+await p.goto('http://localhost:4173/ch/ch01/teach/');
 await p.check('.objectives input >> nth=0'); await p.fill('textarea', 'Roofline: a decode step at batch 64 is HBM-bound on Ironwood.');
 await p.click('text=Save attempt');
 const att = await p.locator('.attempt').count();
-await p.goto('http://localhost:4173/#/');
+await p.goto('http://localhost:4173/');
 const summary = await p.locator('.summary-line').textContent();
 const state = await p.evaluate(() => localStorage.getItem('tpudd:v1'));
 console.log({ v1, v2, v3, v4, score, ivl, left, att, summary, stateLen: state.length, errs });

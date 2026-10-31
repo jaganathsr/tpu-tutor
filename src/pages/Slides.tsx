@@ -1,7 +1,7 @@
 // Review deck: every written chapter's slides in course order, or one chapter.
 // Keys: Right/Left, Space, PageUp/PageDown, Home/End, F for full screen.
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { chapters, chapterSlides, courseInfo, type ChapterMeta } from '../lib/content';
+import { chapters, chapterSlides, courseInfo, hasSlides, preloadForPath, type ChapterMeta } from '../lib/content';
 import { href, navigate } from '../lib/router';
 import { slideComponents } from '../components/slides';
 
@@ -45,7 +45,12 @@ function DeckTitle({ list }: { list: ChapterMeta[] }) {
 }
 
 export function SlidesPage({ scope, n }: { scope: string; n: number }) {
-  const list = chapters.filter((c) => c.written && chapterSlides(c.id) && (scope === 'all' || c.id === scope));
+  const [, setLoaded] = useState(0);
+  const wanted = chapters.filter((c) => c.written && hasSlides(c.id) && (scope === 'all' || c.id === scope));
+  const list = wanted.filter((c) => chapterSlides(c.id));
+  useEffect(() => {
+    if (list.length < wanted.length) preloadForPath(`/slides/${scope}`).then(() => setLoaded((n) => n + 1));
+  }, [scope]);
   const deckRef = useRef<HTMLDivElement>(null);
   const [count, setCount] = useState(0);
   const [label, setLabel] = useState('');
@@ -99,6 +104,7 @@ export function SlidesPage({ scope, n }: { scope: string; n: number }) {
     return () => document.body.classList.remove('deck-mode');
   }, []);
 
+  if (list.length < wanted.length) return <div class="page narrow"><p class="ui muted">Loading slides.</p></div>;
   if (!list.length) {
     return (
       <div class="page narrow">

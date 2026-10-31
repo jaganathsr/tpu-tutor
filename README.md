@@ -13,7 +13,20 @@ npm run build      # static site in dist/
 npm run preview    # serve dist/ on http://localhost:4173
 ```
 
-Node 20 or newer. `npm run dev` and `npm run build` regenerate `src/generated/sources.json` from `research/sources.md` first.
+Node 20 or newer. `npm run dev` and `npm run build` regenerate `src/generated/sources.json` and `src/generated/chapters-meta.json` first.
+
+`npm run build` does three things:
+
+1. Builds the client app.
+2. Builds a server bundle (`src/entry-server.tsx`).
+3. Runs `scripts/prerender.mjs`, which writes a static HTML file for every route (`dist/ch/ch07/index.html` and so on), plus `404.html` and `sitemap.xml`.
+
+Two environment variables control URLs:
+
+| Variable | Default | Pages value (set in the workflow) |
+|---|---|---|
+| `BASE_PATH` | `/` | `/tpu-tutor/` |
+| `SITE_URL` | `https://jaganathsr.github.io/tpu-tutor` | same |
 
 ## Publish on GitHub Pages
 
@@ -21,7 +34,7 @@ Node 20 or newer. `npm run dev` and `npm run build` regenerate `src/generated/so
 2. In the repository settings, under Pages, set Source to **GitHub Actions**.
 3. `.github/workflows/pages.yml` runs `npm run check` and `npm run build` on every push and publishes `dist/`.
 
-The build uses relative paths (`base: './'`) and hash routes (`#/ch/ch01`), so it works from any Pages URL without a 404 fallback.
+Pages are real paths (`/tpu-tutor/ch/ch07/`), each prerendered to static HTML. Routes that are not prerendered, such as individual slide numbers, are served by `404.html`, which boots the app and renders from the URL. Old `#/…` links redirect to the matching path. If you rename the repository, change `BASE_PATH` and `SITE_URL` in `.github/workflows/pages.yml`.
 
 ## Using the course
 
@@ -33,7 +46,7 @@ The build uses relative paths (`base: './'`) and hash routes (`#/ch/ch01`), so i
 | Chapter → Flashcards | About 20 cards, scheduled with SM-2. |
 | Chapter → Teach-back | Objectives as a checklist plus a written explanation; every saved attempt is kept for comparison. |
 | Review | All due flashcards across chapters. |
-| Slides | The whole course as one deck (`#/slides/all/0`), or one chapter (`#/slides/ch05/0`). |
+| Slides | The whole course as one deck (`/slides/all/0/`), or one chapter (`/slides/ch05/0/`). |
 | Exams | Five day exams (10 questions plus 2 from earlier days) and a 30-question final. Each attempt draws a new set with minimum numbers of numeric, scenario and written questions. |
 
 Keyboard:
@@ -44,7 +57,7 @@ Keyboard:
 
 ## Export flashcards and progress
 
-Open **Your data** (footer link or `#/data`):
+Open **Your data** (footer link or `/data/`):
 
 - **Export for Anki:** a tab-separated file with `front`, `back` and `tags` columns and HTML fields. In Anki use File → Import and tick "Allow HTML in fields". Formulas are exported as rendered KaTeX HTML, so add the KaTeX stylesheet to the card template or expect raw markup.
 - **Export with schedules (JSON):** every card plus its SM-2 state.
@@ -62,7 +75,7 @@ Days 1–5 appear as map columns; a `day` above 5 appears in the full-width synt
 
 | File | Contents |
 |---|---|
-| `index.mdx` | Frontmatter (`objectives`, `teachback`, `sources`, optional `status: draft`) and the chapter body in Markdown. KaTeX math uses `$...$` and `$$...$$`, with `\tag{n.m}` for numbering. |
+| `index.mdx` | Frontmatter (`description` of at most 160 characters for search results, `objectives`, `teachback`, `sources`, optional `status: draft`) and the chapter body in Markdown. KaTeX math uses `$...$` and `$$...$$`, with `\tag{n.m}` for numbering. |
 | `quiz.yaml` | 8–12 questions. Types: `mcq` and `scenario` (each option has `text`, `why`, and exactly one `correct: true`), `numeric` (`answer`, `tolerance` relative, `unit`), `free` (`model_answer`). Optional `explanation`, `source` (e.g. `"SB1 #matrix-multiplication"`) and `adapted_from`. |
 | `cards.yaml` | 15–25 cards with `id`, `front`, `back` and `source`. Markdown and math are allowed and rendered at build time. |
 | `slides.mdx` | `<Slide title="...">...</Slide>` blocks. Use `<Cols>` for two columns, `<Big n="313">label</Big>` for a headline number, and plain tables and lists. Keep interactives out of slides; use `<ChipTable>` and static diagrams. |
@@ -81,6 +94,26 @@ Components available in `index.mdx` without imports (`src/components/mdx.tsx`):
   - `HloDecoder`, `TraceReader`, `CompareExplorer`
 
 `npm run check` lints content against the writing rules: banned phrases, exclamation marks and emoji. It also checks citation IDs, the quiz schema, question and card counts, and that each chapter has at least one question adapted from the Scaling Book. It also checks colour contrast.
+
+## Search engines
+
+What the build does for search:
+
+- **Per-page metadata:** every chapter is a prerendered page with its full text in the HTML, plus a `<title>`, a meta description (the chapter's `description`), a canonical URL, Open Graph and Twitter card tags, and schema.org JSON-LD (`Course` on the home page; `LearningResource` and `BreadcrumbList` on chapters).
+- **Noindex app pages:** quiz, flashcard, teach-back, review, exam, slide and data pages are prerendered with `noindex`.
+- **Sitemap:** `sitemap.xml` lists the 13 indexable URLs.
+- **Share image:** `public/og.png`, rendered from `scripts/og-card.html`; the re-render command is in that file.
+- **Code splitting:** each chapter's content is its own JavaScript chunk.
+
+What only you can do:
+
+1. **Submit the site to Google Search Console** (search.google.com/search-console).
+   - Add the URL-prefix property `https://jaganathsr.github.io/tpu-tutor/`.
+   - Verify it with the HTML-tag method: add the `<meta name="google-site-verification" …>` tag inside the `<!--head:start-->` block of `index.html`, push, then click Verify.
+   - Submit `https://jaganathsr.github.io/tpu-tutor/sitemap.xml`.
+2. **Do the same in Bing Webmaster Tools.** It can import the Search Console property.
+3. A project site cannot serve `robots.txt`: crawlers only read it at the domain root, `jaganathsr.github.io/robots.txt`. The sitemap therefore has to be submitted directly, as above.
+4. **Links bring the most traffic:** the GitHub repository's description and website field, topics, and posts linking to individual chapters.
 
 ## Sources and numbers
 
@@ -108,6 +141,8 @@ Components available in `index.mdx` without imports (`src/components/mdx.tsx`):
 npm run check                          # content lint and contrast
 npm run build && npm run preview &     # then:
 npm run test:e2e                       # keyboard-driven quiz, flashcard and teach-back flows in Chrome
+BASE_PATH=/tpu-tutor/ npm run build && BASE_PATH=/tpu-tutor/ npx vite preview --port 4174 &
+BASE=http://localhost:4174/tpu-tutor npm run test:routing   # paths, links, back button, legacy #/ redirect
 ```
 
 `test:e2e` uses `playwright-core` with the system Chrome (`CHROME=/path/to/chrome` to override).

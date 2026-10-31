@@ -1,4 +1,5 @@
 ---
+description: "Sharded matmuls and collectives on a TPU torus: sharding notation, the four matmul cases, AllGather, ReduceScatter, AllReduce and AllToAll costs."
 objectives:
   - I can read and write sharding notation, such as A[I_X, J_Y] and the unreduced marker {U_X}, and the equivalent JAX PartitionSpec. I can say what each device holds for a given mesh and spec.
   - I can classify any sharded matmul into the four cases and name the collective each needs.

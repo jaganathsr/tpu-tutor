@@ -504,3 +504,5 @@ figure.listing pre { font-size: 0.74rem; line-height: 1.45; max-height: 26rem; b
 .slide-body pre { font-size: 1.15cqw; line-height: 1.45; padding: 1cqw 1.4cqw; }
 .decoder-table th { width: 8.5rem; white-space: nowrap; } .decoder-table td { white-space: normal; overflow-wrap: anywhere; }
 .compare-table td { vertical-align: middle; }
+.chapter-nav { display: flex; justify-content: space-between; gap: 1.5rem; margin-top: 1.4rem; flex-wrap: wrap; }
+.chapter-nav a:last-child { text-align: right; margin-left: auto; }

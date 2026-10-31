@@ -1,0 +1,1071 @@
+{
+ "ch01": {
+  "description": "TPU history from v1 to Ironwood and TPU 8t/8i, and roofline analysis: arithmetic intensity, ridge points and compute-bound batch sizes against H100.",
+  "objectives": [
+   "I can explain each TPU generation, from v1 to 8t and 8i, as a response to a named bottleneck.",
+   "I can compute the math time, the communication time and the ridge point for any chip from its spec sheet, and state which regime a kernel is in.",
+   "I can derive that a bf16 matmul's arithmetic intensity is about its token batch, and give the compute-bound batch for v5e, Ironwood, H100 and TPU 8i.",
+   "I can show why int8 or fp8 weights with bf16 math halve the compute-bound batch, and why fp8 math doubles it again.",
+   "I can apply the same roofline to an interconnect link and derive when a sharded matmul is communication-bound.",
+   "I can name what the HBM roofline leaves out (VPU-bound ops, latency-bound transfers, achievable fraction of peak) and when each matters."
+  ],
+  "teachback": [
+   "Your H100 intuition says a decode step at batch 64 is memory-bound. Show on a whiteboard whether that holds on Ironwood, and at what batch it stops holding.",
+   "Why did Google build an inference-only chip first, then a training chip, then split into two chips again in 2026? Name the bottleneck each time.",
+   "Why does int8 weights with bf16 math lower the compute-bound batch, while int8 math does not?",
+   "From TPUv2 to Ironwood, FLOPs per chip grew 50× and HBM bandwidth 10.5×. What does that do to the batch you need, and what did Google build to compensate?"
+  ],
+  "sources": [
+   {
+    "id": "P-v1",
+    "label": "§2 architecture, §4 rooflines"
+   },
+   {
+    "id": "P-v23",
+    "label": "Table 3, v1 to v3"
+   },
+   {
+    "id": "P-Norrie",
+    "label": "Derivation from TPUv1"
+   },
+   {
+    "id": "HC-v23",
+    "label": "Why 128×128"
+   },
+   {
+    "id": "P-v4",
+    "label": "§2 OCS, §3 SparseCore"
+   },
+   {
+    "id": "D-v5e"
+   },
+   {
+    "id": "D-v5p"
+   },
+   {
+    "id": "D-v6e"
+   },
+   {
+    "id": "G-v6e"
+   },
+   {
+    "id": "D-7x"
+   },
+   {
+    "id": "G-7x"
+   },
+   {
+    "id": "G-8dd"
+   },
+   {
+    "id": "J-hw",
+    "label": "per-core table, TPU 8 BF16/FP8"
+   },
+   {
+    "id": "P-Micro26",
+    "label": "abstract"
+   },
+   {
+    "id": "SB1",
+    "anchor": "#where-does-the-time-go",
+    "label": "Where does the time go"
+   },
+   {
+    "id": "SB1",
+    "anchor": "#matrix-multiplication",
+    "label": "Matrix multiplication"
+   },
+   {
+    "id": "SB1",
+    "anchor": "#network-communication-rooflines",
+    "label": "Network rooflines"
+   },
+   {
+    "id": "SB2",
+    "anchor": "#tpu-specs",
+    "label": "TPU specs"
+   },
+   {
+    "id": "SB6",
+    "anchor": "#what-does-llama-3-look-like",
+    "label": "LLaMA 3 shapes"
+   },
+   {
+    "id": "N-h100"
+   }
+  ],
+  "hasSlides": true
+ },
+ "ch02": {
+  "description": "Inside a TPU TensorCore: MXU systolic arrays, VPU, VMEM scratchpad, (8,128) tiling, SparseCore and megacore, mapped against the NVIDIA SM model.",
+  "objectives": [
+   "I can draw a TensorCore and say what each unit does — scalar unit, VPU, MXU, XLU, VMEM, SMEM, vector registers and DMA engines — and which one issues instructions to the rest.",
+   "I can explain weight-stationary systolic dataflow and compute an MXU tile's utilization from M, K, N and the array size.",
+   "I can explain why a contraction or output dimension smaller than the array, or not a multiple of it, wastes MXU capacity, and estimate the waste.",
+   "I can explain why VMEM is a compiler-managed scratchpad rather than a cache, give its size per generation, and compute the ridge point for VMEM-resident weights.",
+   "I can explain (8,128) tiling and the bf16 and int8 packing, and what they imply for array shapes.",
+   "I can say how many devices JAX sees per chip on v4, v5e, v5p, v6e, Ironwood, 8t and 8i, and why.",
+   "I can say what SparseCores and 8i's Collectives Acceleration Engine are for.",
+   "I can map SM, warp scheduler, CUDA core, shared memory, Tensor Core and HBM onto TPU units, and name three places the mapping breaks."
+  ],
+  "teachback": [
+   "A GPU hides memory latency with up to 64 resident warps per SM. What hides it on a TPU, and what does that imply for who has to be clever?",
+   "Google moved from 128×128 to 256×256 matrix units in v6e. What does that buy, and what does it cost a model with head dimension 64?",
+   "What is VMEM, how big is it on Ironwood and on 8i, and why did 8i triple it?",
+   "Why does a decode step leave the matrix units mostly idle even if the weights were already on chip?"
+  ],
+  "sources": [
+   {
+    "id": "SB2",
+    "anchor": "#what-is-a-tpu",
+    "label": "What is a TPU"
+   },
+   {
+    "id": "SB2",
+    "anchor": "#appendix-a-more-on-tpu-internals",
+    "label": "Appendix A: VPU, scalar core"
+   },
+   {
+    "id": "SB2",
+    "anchor": "#appendix-b-how-does-a-systolic-array-work",
+    "label": "Appendix B: systolic arrays"
+   },
+   {
+    "id": "SB2",
+    "anchor": "#worked-problems",
+    "label": "Worked problems"
+   },
+   {
+    "id": "P-Norrie",
+    "label": "scalar, vector and matrix units"
+   },
+   {
+    "id": "P-v4",
+    "label": "§2.2 chip, §3 SparseCore"
+   },
+   {
+    "id": "D-arch"
+   },
+   {
+    "id": "D-7x"
+   },
+   {
+    "id": "J-hw"
+   },
+   {
+    "id": "X-tiled"
+   },
+   {
+    "id": "PL-tpu"
+   },
+   {
+    "id": "PL-sc"
+   },
+   {
+    "id": "G-8dd"
+   },
+   {
+    "id": "PL-pipe",
+    "label": "megacore dimension semantics"
+   },
+   {
+    "id": "T-exec",
+    "label": "compile cost"
+   },
+   {
+    "id": "SB12",
+    "anchor": "#gpus-vs-tpus-at-the-chip-level",
+    "label": "GPUs vs TPUs at the chip level"
+   },
+   {
+    "id": "N-tune",
+    "label": "§1.4.1, occupancy and SMEM"
+   },
+   {
+    "id": "A-trn2-nki"
+   }
+  ],
+  "hasSlides": true
+ },
+ "ch03": {
+  "description": "TPU interconnect: ICI links, 3D torus and wraparound, optical circuit switches, slices, pods, DCN multislice and TPU 8i Boardfly, compared with NVLink.",
+  "objectives": [
+   "I can describe the TPU topologies — a 2D torus on v5e and v6e, OCS-joined 4×4×4 cubes forming a 3D torus on v4, v5p and Ironwood, and Boardfly on 8i — and say which slice shapes have wraparound.",
+   "I can convert a Cloud-docs ICI figure (per chip, both directions, all links) into per-link one-way bandwidth and into the per-axis bandwidth used in collective cost formulas.",
+   "I can explain what optical circuit switches buy (reconfiguration, failure isolation, non-contiguous and twisted slices) and what they cost.",
+   "I can rank HBM, ICI, PCIe and DCN for Ironwood with numbers, and say which parallelism belongs on each.",
+   "I can compute hop counts, diameter and point-to-point transfer time on a slice, and say when a transfer is latency-bound rather than bandwidth-bound.",
+   "I can explain why TPU 8i abandons the torus for Boardfly, using hop latency and decode traffic.",
+   "I can compare TPU scale-up with NVLink domains and InfiniBand fat trees, and with Trainium's move from torus to switch."
+  ],
+  "teachback": [
+   "NVLink gives every GPU in an NVL72 rack one hop to the other 71. An Ironwood chip has 6 neighbours and the pod has 9,216 chips. Argue for each design with numbers.",
+   "Why do you get roughly half the collective bandwidth on a 2×2×2 slice compared with a 4×4×4 cube?",
+   "What did Google change in TPU 8i's network, and why, given what decode traffic looks like?",
+   "Walk the bandwidth ladder for Ironwood from HBM to DCN and say which kind of parallelism belongs at each rung."
+  ],
+  "sources": [
+   {
+    "id": "SB2",
+    "anchor": "#tpu-networking",
+    "label": "TPU networking"
+   },
+   {
+    "id": "SB2",
+    "anchor": "#tpu-specs",
+    "label": "TPU specs, ICI table"
+   },
+   {
+    "id": "SB2",
+    "anchor": "#worked-problems",
+    "label": "Worked problems 2, 5, 6"
+   },
+   {
+    "id": "D-arch",
+    "label": "slices, cubes, OCS, twisted torus"
+   },
+   {
+    "id": "D-v4",
+    "label": "twisted torus bisection"
+   },
+   {
+    "id": "D-v5e"
+   },
+   {
+    "id": "D-v5p"
+   },
+   {
+    "id": "D-v6e"
+   },
+   {
+    "id": "D-7x"
+   },
+   {
+    "id": "P-v4",
+    "label": "§2 OCS and availability"
+   },
+   {
+    "id": "P-Lightwave"
+   },
+   {
+    "id": "P-Resil"
+   },
+   {
+    "id": "G-7x"
+   },
+   {
+    "id": "G-7x-ga"
+   },
+   {
+    "id": "HC-7x",
+    "label": "pod size and spares"
+   },
+   {
+    "id": "SB3",
+    "anchor": "#a-deeper-dive-into-tpu-communication-primitives",
+    "label": "latency-bound transfers"
+   },
+   {
+    "id": "G-8dd",
+    "label": "Boardfly vs torus math"
+   },
+   {
+    "id": "P-Pathways",
+    "label": "§2, §4"
+   },
+   {
+    "id": "R-maxtext",
+    "label": "ici_* and dcn_* parallelism"
+   },
+   {
+    "id": "SB12",
+    "anchor": "#networking",
+    "label": "GPU networking"
+   },
+   {
+    "id": "N-gb200"
+   },
+   {
+    "id": "A-trn2-sys"
+   },
+   {
+    "id": "A-trn3-sys"
+   }
+  ],
+  "hasSlides": true
+ },
+ "ch04": {
+  "description": "Transformer accounting for TPUs: parameter and FLOP counts, 6ND, KV cache size, attention intensity in prefill and decode, MoE batch requirements.",
+  "objectives": [
+   "I can count the FLOPs of any einsum, and derive 6 × parameters × tokens for training from 2× forward and 4× backward.",
+   "I can count the parameters of a dense GQA transformer and of an MoE, split into MLP, attention and vocabulary.",
+   "I can compute KV-cache bytes per token and per sequence, and say how many sequences fit on a chip after the weights.",
+   "I can derive when attention FLOPs dominate (T > 8D) and why decode attention is never compute-bound.",
+   "I can compute the compute-bound batch for an MoE layer and explain why it is E/k times larger than for a dense layer.",
+   "I can estimate training memory (10 bytes per parameter plus activations) and show that large clusters are needed for FLOPs, not memory.",
+   "I can name the TPU-specific consequences of model shape — padding to 256, head dimension, KV heads — and where they show up later."
+  ],
+  "teachback": [
+   "Estimate on a whiteboard, in two minutes, the FLOPs and the Ironwood-pod-days to train a 70B dense model on 15T tokens.",
+   "Why does an MoE make decode harder to make compute-bound, and by what factor?",
+   "A 70B model has 320 KB of bf16 KV cache per token. How many 32k-token conversations fit beside the weights on 8 Ironwood chips?",
+   "Why is decode attention memory-bound at every batch size, while the MLP becomes compute-bound at large enough batch?"
+  ],
+  "sources": [
+   {
+    "id": "SB4",
+    "anchor": "#counting-dots",
+    "label": "Counting dots"
+   },
+   {
+    "id": "SB4",
+    "anchor": "#global-flops-and-params-calculation",
+    "label": "Global FLOPs and params"
+   },
+   {
+    "id": "SB4",
+    "anchor": "#fractional-cost-of-attention-with-context-length",
+    "label": "Attention share"
+   },
+   {
+    "id": "SB4",
+    "anchor": "#sparsity-and-mixture-of-experts",
+    "label": "MoE"
+   },
+   {
+    "id": "SB4",
+    "anchor": "#gradient-checkpointing",
+    "label": "Remat"
+   },
+   {
+    "id": "SB4",
+    "anchor": "#key-value-kv-caching",
+    "label": "KV caching"
+   },
+   {
+    "id": "SB4",
+    "anchor": "#a-few-problems-to-work",
+    "label": "Problems"
+   },
+   {
+    "id": "SB4",
+    "anchor": "#appendix-a-how-does-flash-attention-work",
+    "label": "Flash attention"
+   },
+   {
+    "id": "SB5",
+    "anchor": "#some-problems-to-work",
+    "label": "LLaMA-2-13B problems"
+   },
+   {
+    "id": "SB6",
+    "anchor": "#counting-parameters-and-flops",
+    "label": "LLaMA-3-70B counts"
+   },
+   {
+    "id": "SB7",
+    "anchor": "#what-about-attention",
+    "label": "Attention intensity"
+   },
+   {
+    "id": "SB7",
+    "anchor": "#worked-problems",
+    "label": "Worked problems"
+   },
+   {
+    "id": "SB10",
+    "anchor": "#worked-problems",
+    "label": "MoE with ragged_dot"
+   },
+   {
+    "id": "R-tpuinf",
+    "label": "megablox, fused MoE kernels"
+   },
+   {
+    "id": "D-7x"
+   },
+   {
+    "id": "G-8dd"
+   }
+  ],
+  "hasSlides": true
+ },
+ "ch05": {
+  "description": "Sharded matmuls and collectives on a TPU torus: sharding notation, the four matmul cases, AllGather, ReduceScatter, AllReduce and AllToAll costs.",
+  "objectives": [
+   "I can read and write sharding notation, such as A[I_X, J_Y] and the unreduced marker {U_X}, and the equivalent JAX PartitionSpec. I can say what each device holds for a given mesh and spec.",
+   "I can classify any sharded matmul into the four cases and name the collective each needs.",
+   "I can derive the bidirectional-ring AllGather time V / W_ici and explain why it does not depend on the number of chips. I can extend it to several axes, to AllReduce (2×) and to AllToAll (¼).",
+   "I can say when a collective is latency-bound, and compute the threshold on v5e and Ironwood.",
+   "I can explain collective matmul (decomposing an AllGather into collective-permutes overlapped with partial matmuls) and compare it with async tensor parallelism on GPUs.",
+   "I can relate the book's formulas to NCCL's algbw and busbw, and compare how quickly TPU and GPU collectives reach peak bandwidth."
+  ],
+  "teachback": [
+   "Why doesn't AllGather time on a ring depend on how many chips are in the ring?",
+   "Explain to a Megatron user what XLA's collective matmul does, and what they would have to do on a GPU to get the same overlap.",
+   "Given A[B, D] sharded P('X', 'Y') and W[D, F] sharded P('Y', None), what happens and what does it cost on an Ironwood 4×4×4 cube?",
+   "Why is an AllToAll a quarter of an AllGather on a TPU ring, and what does that mean for MoE?"
+  ],
+  "sources": [
+   {
+    "id": "SB3",
+    "anchor": "#partitioning-notation-and-collective-operations",
+    "label": "Notation"
+   },
+   {
+    "id": "SB3",
+    "anchor": "#computation-with-sharded-arrays",
+    "label": "The four cases"
+   },
+   {
+    "id": "SB3",
+    "anchor": "#a-deeper-dive-into-tpu-communication-primitives",
+    "label": "Collective costs"
+   },
+   {
+    "id": "SB3",
+    "anchor": "#our-final-communication-primitive-the-alltoall",
+    "label": "AllToAll"
+   },
+   {
+    "id": "SB3",
+    "anchor": "#how-to-overlap-matmul-communication-with-compute",
+    "label": "Collective matmul"
+   },
+   {
+    "id": "SB3",
+    "anchor": "#some-problems-to-work",
+    "label": "Problems"
+   },
+   {
+    "id": "SB10",
+    "anchor": "#manual-sharding-mode-via-shard-map",
+    "label": "Collective matmul in shard_map"
+   },
+   {
+    "id": "SB12",
+    "anchor": "#how-do-collectives-work-on-gpus",
+    "label": "GPU collectives"
+   },
+   {
+    "id": "J-sharding-api"
+   },
+   {
+    "id": "J-shmap"
+   },
+   {
+    "id": "P-CollMM"
+   },
+   {
+    "id": "X-flags",
+    "label": "windowed einsum, async collectives"
+   },
+   {
+    "id": "X-async"
+   },
+   {
+    "id": "P-Megatron",
+    "label": "§3"
+   },
+   {
+    "id": "P-SeqPar"
+   },
+   {
+    "id": "PT-asynctp"
+   },
+   {
+    "id": "P-Flux"
+   },
+   {
+    "id": "N-teoverlap"
+   },
+   {
+    "id": "N-nccltests"
+   },
+   {
+    "id": "D-7x"
+   }
+  ],
+  "hasSlides": true
+ },
+ "ch06": {
+  "description": "Choosing a training mesh on TPU: data parallel, FSDP, tensor and pipeline parallelism thresholds, LLaMA-3 on v5p and Ironwood, GPU recipes compared.",
+  "objectives": [
+   "I can derive the condition under which each training scheme is compute-bound — data parallelism, FSDP, tensor parallelism, FSDP plus TP, and cross-slice data parallelism over DCN.",
+   "I can compute the optimal FSDP degree, X_opt, and pick a mesh for a given model, batch and slice.",
+   "I can redo the Scaling Book's LLaMA-3-70B plan on a v5p pod, and explain why the same batch is communication-bound on a full Ironwood pod.",
+   "I can explain why pipeline parallelism is central to GPU recipes and secondary on TPUs, citing LLaMA-3's actual GPU configuration.",
+   "I can map these choices to MaxText configuration — ici_* against dcn_* axes and logical axis rules."
+  ],
+  "teachback": [
+   "Give the one-line rule for when FSDP stops being free, with the number for v5p and for Ironwood.",
+   "Why did Meta use 16-way pipeline parallelism for LLaMA-3 405B on GPUs, when a TPU pod would mostly not?",
+   "Choose a mesh for a 70B dense model on a 2,048-chip Ironwood slice with a 4M-token batch, and say whether it is compute-bound.",
+   "What would you change if your Ironwood training run is communication-bound and you cannot raise the batch?"
+  ],
+  "sources": [
+   {
+    "id": "SB5",
+    "anchor": "#data-parallelism",
+    "label": "Data parallelism"
+   },
+   {
+    "id": "SB5",
+    "anchor": "#fully-sharded-data-parallelism-fsdp",
+    "label": "FSDP"
+   },
+   {
+    "id": "SB5",
+    "anchor": "#tensor-parallelism",
+    "label": "Tensor parallelism"
+   },
+   {
+    "id": "SB5",
+    "anchor": "#combining-fsdp-and-tensor-parallelism",
+    "label": "FSDP + TP"
+   },
+   {
+    "id": "SB5",
+    "anchor": "#pipelining",
+    "label": "Pipelining"
+   },
+   {
+    "id": "SB5",
+    "anchor": "#scaling-across-pods",
+    "label": "Across pods (DCN)"
+   },
+   {
+    "id": "SB5",
+    "anchor": "#some-problems-to-work",
+    "label": "Problems"
+   },
+   {
+    "id": "SB6",
+    "anchor": "#how-to-shard-llama-3-70b-for-training",
+    "label": "Sharding LLaMA 3-70B"
+   },
+   {
+    "id": "SB6",
+    "anchor": "#worked-problems",
+    "label": "Worked problems"
+   },
+   {
+    "id": "SB12",
+    "anchor": "#rooflines-for-llm-scaling-on-gpus",
+    "label": "GPU rooflines"
+   },
+   {
+    "id": "P-Llama3",
+    "label": "Tables 3–4, §3.3–3.4"
+   },
+   {
+    "id": "R-maxtext",
+    "label": "base.yml mesh, sharding guide"
+   },
+   {
+    "id": "P-GSPMD",
+    "label": "§3.3 pipelining as sharding"
+   },
+   {
+    "id": "D-7x"
+   },
+   {
+    "id": "G-8dd"
+   }
+  ],
+  "hasSlides": true
+ },
+ "ch07": {
+  "description": "LLM inference on TPU: prefill vs decode rooflines, KV-cache-bound decode, batch breakeven, decode sharding, fp8 and int8 quantization with Qwix.",
+  "objectives": [
+   "I can state the decode step-time lower bound and the general step-time formula, and compute both for a model on a slice.",
+   "I can compute the compute-bound decode batch for each weight and math precision on v5e, Ironwood, 8i and H100, and explain why KV growth makes it unreachable at long context.",
+   "I can explain why prefill is compute-bound and decode is not, and what that implies for disaggregated serving and the prefill-to-decode server ratio.",
+   "I can choose a decode sharding — model parallelism up to F/(Bβ), the KV cache split by heads then by batch, never FSDP — and say when its collectives are latency-bound.",
+   "I can explain int8, fp8 and fp4 weights, activations and KV on TPU, say which generations have native fp8, and describe how Qwix applies post-training quantization.",
+   "I can explain speculative decoding as spending idle FLOPs in a memory-bound step."
+  ],
+  "teachback": [
+   "Your PM wants 2× decode throughput on the same chips. List what moves the number and by how much — batch, fp8 weights, fp8 KV, more TP, speculative decoding.",
+   "Why is FSDP an order-of-magnitude regression for decode, when it is free for training?",
+   "At 32k context, why does 8i's FP8 peak barely matter for decode, and what does matter?",
+   "How many prefill servers do you need per decode server for 8k prompts and 512-token answers, and why?"
+  ],
+  "sources": [
+   {
+    "id": "SB7",
+    "anchor": "#the-basics-of-transformer-inference",
+    "label": "Basics"
+   },
+   {
+    "id": "SB7",
+    "anchor": "#linear-operations-what-bottlenecks-us",
+    "label": "Linear ops"
+   },
+   {
+    "id": "SB7",
+    "anchor": "#theoretical-estimates-for-llm-latency-and-throughput",
+    "label": "Latency and throughput bounds"
+   },
+   {
+    "id": "SB7",
+    "anchor": "#modeling-throughput-and-latency-for-llama-2-13b",
+    "label": "LLaMA-2-13B tables"
+   },
+   {
+    "id": "SB7",
+    "anchor": "#tricks-for-improving-generation-throughput-and-latency",
+    "label": "Tricks"
+   },
+   {
+    "id": "SB7",
+    "anchor": "#distributing-inference-over-multiple-accelerators",
+    "label": "Sharding inference"
+   },
+   {
+    "id": "SB7",
+    "anchor": "#designing-an-effective-inference-engine",
+    "label": "Engine design"
+   },
+   {
+    "id": "SB7",
+    "anchor": "#appendix-c-latency-bound-communications",
+    "label": "Latency-bound comms"
+   },
+   {
+    "id": "SB7",
+    "anchor": "#appendix-d-speculative-sampling",
+    "label": "Speculative sampling"
+   },
+   {
+    "id": "SB7",
+    "anchor": "#worked-problems",
+    "label": "Problems"
+   },
+   {
+    "id": "SB8",
+    "anchor": "#worked-problems",
+    "label": "Serving problems"
+   },
+   {
+    "id": "P-ESTI"
+   },
+   {
+    "id": "R-qwix"
+   },
+   {
+    "id": "R-tpuinf",
+    "label": "Qwix config in tpu-inference"
+   },
+   {
+    "id": "D-arch",
+    "label": "dtypes per generation"
+   },
+   {
+    "id": "D-v5p"
+   },
+   {
+    "id": "D-7x"
+   },
+   {
+    "id": "G-8dd"
+   },
+   {
+    "id": "J-hw"
+   }
+  ],
+  "hasSlides": true
+ },
+ "ch08": {
+  "description": "The TPU serving stack: vLLM on TPU, tpu-inference, torchax, vllm-torchtpu, Ragged Paged Attention, static-shape continuous batching, KV layout.",
+  "objectives": [
+   "I can describe how TPU serving got from JetStream through PyTorch/XLA and tpu-inference to the October 2026 split, and say which path to use for a new PyTorch or JAX port.",
+   "I can explain what torchax does to a torch.nn.Linear call, why tpu-inference needs the model as a pure function that returns its KV cache, and where the code ends up as HLO.",
+   "I can explain how continuous batching survives a compiler that wants static shapes — padded shape buckets compiled ahead, a flattened token batch, and Ragged Paged Attention's three sub-kernels.",
+   "I can read the tpu-inference KV-cache layout and explain its packing dimension from (8,128) tiling.",
+   "I can map tpu-inference's mesh axes to the decode sharding rules of Chapter 7.",
+   "I can size a deployment from the Scaling Book's LLaMA-3-70B serving analysis, and solve the book's 405B problem under a latency limit."
+  ],
+  "teachback": [
+   "Explain to a vLLM-on-CUDA engineer how continuous batching works when every shape must be known at compile time.",
+   "What does torchax do to a torch.nn.Linear call, and where does it end up?",
+   "Why does the KV-cache tensor in tpu-inference have a 'packing' dimension?",
+   "You are porting a new PyTorch model to TPU this month. Which serving path do you choose and why?"
+  ],
+  "sources": [
+   {
+    "id": "B-vllmtpu"
+   },
+   {
+    "id": "R-tpuinf",
+    "label": "README, runner/, layers/common/sharding.py, kernels/"
+   },
+   {
+    "id": "R-torchax-guide"
+   },
+   {
+    "id": "R-torchax"
+   },
+   {
+    "id": "P-RPA"
+   },
+   {
+    "id": "R-vllm-torchtpu"
+   },
+   {
+    "id": "T-engines"
+   },
+   {
+    "id": "T-xla"
+   },
+   {
+    "id": "R-jetstream"
+   },
+   {
+    "id": "R-qwix"
+   },
+   {
+    "id": "X-tiled"
+   },
+   {
+    "id": "SB7",
+    "anchor": "#lets-look-at-an-implementation-jetstream",
+    "label": "JetStream"
+   },
+   {
+    "id": "SB7",
+    "anchor": "#continuous-batching",
+    "label": "Continuous batching"
+   },
+   {
+    "id": "SB8",
+    "anchor": "#whats-the-llama-serving-story",
+    "label": "LLaMA serving story"
+   },
+   {
+    "id": "SB8",
+    "anchor": "#visualizing-the-latency-throughput-tradeoff",
+    "label": "Latency against throughput"
+   },
+   {
+    "id": "SB8",
+    "anchor": "#worked-problems",
+    "label": "Problems"
+   }
+  ],
+  "hasSlides": true
+ },
+ "ch09": {
+  "description": "From Python to the TPU MXU: jaxpr, StableHLO, XLA passes, Shardy, JAX sharding modes and shard_map, and TorchTPU's architecture in detail.",
+  "objectives": [
+   "I can trace a function from Python through jaxpr, StableHLO, HLO and XLA's passes to LLO and TPU instructions, and dump each stage.",
+   "I can say what I control on TPU — shardings, constraints, layouts, remat, donation, flags and Pallas — and what I do not.",
+   "I can explain Shardy against GSPMD, compare JAX's three sharding modes (auto, explicit, manual shard_map), and say when to drop to each.",
+   "I can compare XLA whole-program compilation with CUDA Graphs and torch.compile with Inductor.",
+   "I can explain TorchTPU in detail — the PrivateUse1 backend, deferred StableHLO ops, its three eager modes, torch.compile without Inductor, the compile cache, tpu_dist and the SPMD handshake, and Pallas through jax_op.",
+   "I can contrast TorchTPU with JAX, torchax and PyTorch/XLA, and the TPU stack with AWS's Neuron stack."
+  ],
+  "teachback": [
+   "A CUDA engineer says 'XLA is just CUDA Graphs.' Correct them in three sentences.",
+   "Draw how y = model(x) reaches the TPU under JAX jit, torchax, TorchTPU strict eager and TorchTPU torch.compile.",
+   "Why did TorchTPU need an 'SPMD handshake' that JAX never needed?",
+   "XLA inserted a giant AllGather you did not expect. What are your three options, from least to most effort?"
+  ],
+  "sources": [
+   {
+    "id": "SB9",
+    "anchor": "#a-thousand-foot-view-of-the-tpu-software-stack",
+    "label": "The TPU software stack"
+   },
+   {
+    "id": "SB10",
+    "anchor": "#how-does-parallelism-work-in-jax",
+    "label": "Auto, explicit, manual"
+   },
+   {
+    "id": "J-shard"
+   },
+   {
+    "id": "J-jaxpr"
+   },
+   {
+    "id": "J-aot"
+   },
+   {
+    "id": "J-log",
+    "label": "Shardy default 0.7.0; jax.shard_map 0.8.0"
+   },
+   {
+    "id": "X-arch"
+   },
+   {
+    "id": "X-passes"
+   },
+   {
+    "id": "X-dumps"
+   },
+   {
+    "id": "X-flags"
+   },
+   {
+    "id": "X-shardy-jax"
+   },
+   {
+    "id": "P-GSPMD",
+    "label": "§3–4"
+   },
+   {
+    "id": "N-graphs",
+    "label": "§4.2"
+   },
+   {
+    "id": "T-how"
+   },
+   {
+    "id": "T-exec"
+   },
+   {
+    "id": "T-dist"
+   },
+   {
+    "id": "T-kern"
+   },
+   {
+    "id": "T-pt"
+   },
+   {
+    "id": "T-blog1"
+   },
+   {
+    "id": "T-oss"
+   },
+   {
+    "id": "D-pytorch"
+   },
+   {
+    "id": "T-xla"
+   },
+   {
+    "id": "R-torchax"
+   },
+   {
+    "id": "A-torch"
+   },
+   {
+    "id": "A-nki"
+   }
+  ],
+  "hasSlides": true
+ },
+ "ch10": {
+  "description": "Writing Pallas TPU kernels and profiling with XProf: BlockSpecs, VMEM tiling, reading traces and HLO ops, plus a full inference design review.",
+  "objectives": [
+   "I can write and explain a Pallas TPU kernel — grid, BlockSpec index maps, the (8,128) rule, memory spaces, implicit double buffering, dimension_semantics and scratch accumulators — and say how it reaches the hardware through Mosaic.",
+   "I can choose a Pallas tile size from arithmetic intensity and the VMEM budget.",
+   "I can say when a Pallas kernel is worth writing on TPU and when XLA already does the job.",
+   "I can capture a TPU profile from JAX and from tpu-inference, and read the Trace Viewer, including async -start/-done pairs.",
+   "I can decode an HLO op line — shape, layout, tiling, memory space, fusion kind, called computation and replica groups.",
+   "I can find a communication-overlap failure and a sharding mistake in a profile, and use the op profile and roofline tools to choose what to fix.",
+   "I can run a design review — model, chip, SLO, mesh, quantization, batch, expected step time — and state the bottleneck in one sentence."
+  ],
+  "teachback": [
+   "Show me in this trace where communication failed to overlap, and what you would change.",
+   "What is the Pallas equivalent of a CUDA thread block, and why is the answer that there isn't one?",
+   "Read this HLO line aloud, and tell me which memory the output lives in and how many bytes it really occupies.",
+   "Walk through the design review for LLaMA-3-70B on Ironwood under a 30 ms per-token limit at 32k context."
+  ],
+  "sources": [
+   {
+    "id": "PL-tpu"
+   },
+   {
+    "id": "PL-grid"
+   },
+   {
+    "id": "PL-pipe"
+   },
+   {
+    "id": "PL-mm"
+   },
+   {
+    "id": "PL-sparse"
+   },
+   {
+    "id": "PL-dist"
+   },
+   {
+    "id": "PL-core"
+   },
+   {
+    "id": "PL-gpu"
+   },
+   {
+    "id": "K-tokamax"
+   },
+   {
+    "id": "SB9",
+    "anchor": "#the-jax-profiler-a-multi-purpose-tpu-profiler",
+    "label": "The JAX profiler"
+   },
+   {
+    "id": "SB9",
+    "anchor": "#how-to-read-an-xla-op",
+    "label": "Reading an XLA op"
+   },
+   {
+    "id": "SB9",
+    "anchor": "#looking-at-a-realish-example-profile",
+    "label": "Example profile"
+   },
+   {
+    "id": "SB9",
+    "anchor": "#worked-problems",
+    "label": "Problems"
+   },
+   {
+    "id": "XP-home"
+   },
+   {
+    "id": "XP-trace"
+   },
+   {
+    "id": "XP-opprof"
+   },
+   {
+    "id": "XP-roof"
+   },
+   {
+    "id": "XP-mem"
+   },
+   {
+    "id": "XP-jax"
+   },
+   {
+    "id": "R-tpuinf-prof"
+   },
+   {
+    "id": "X-tiled"
+   },
+   {
+    "id": "X-async"
+   },
+   {
+    "id": "A-nki"
+   },
+   {
+    "id": "SB1",
+    "anchor": "#matrix-multiplication",
+    "label": "Tile intensity"
+   }
+  ],
+  "hasSlides": true
+ },
+ "ch11": {
+  "description": "TPU vs GPU vs Trainium architecture: compute, memory, NVLink vs ICI torus, collectives, software stacks, and which workloads favour each design.",
+  "objectives": [
+   "I can state the design bet behind GPUs, TPUs and Trainium, and what each gives up.",
+   "I can compare current chips quantitatively — compute per precision, HBM capacity and bandwidth, ridge point and on-chip memory — for Ironwood, TPU 8t and 8i, H100, B200, GB200, Rubin, Trainium2 and Trainium3.",
+   "I can compare scale-up and scale-out designs, and derive their consequences for AllGather and AllToAll and for training thresholds.",
+   "I can compare the programming models — kernels, compilation, PyTorch paths and partitioning.",
+   "I can say, for a given workload, which design has the structural advantage, and why.",
+   "I can name the 2025–26 convergence trends and the evidence for each."
+  ],
+  "teachback": [
+   "In five minutes, explain to a room of CUDA engineers what a TPU gives up relative to a GPU, what it gets in return, and how to tell which side of that trade their workload is on.",
+   "Why can a TPU pod reach about 9,000 chips without packet switches while NVLink stops at 72, and what does each topology make cheap or expensive?",
+   "Blackwell added Tensor Memory and single-thread MMA issue. Argue whether GPUs are converging on TPU design, with the evidence for and against.",
+   "For an MoE model with 256 experts, which interconnect would you want for training, and why?"
+  ],
+  "sources": [
+   {
+    "id": "SB12",
+    "anchor": "#gpus-vs-tpus-at-the-chip-level",
+    "label": "Chip level"
+   },
+   {
+    "id": "SB12",
+    "anchor": "#networking",
+    "label": "Networking"
+   },
+   {
+    "id": "SB12",
+    "anchor": "#how-do-collectives-work-on-gpus",
+    "label": "Collectives"
+   },
+   {
+    "id": "SB12",
+    "anchor": "#rooflines-for-llm-scaling-on-gpus",
+    "label": "LLM rooflines"
+   },
+   {
+    "id": "SB12",
+    "anchor": "#appendix-a-how-does-this-change-with-gb200",
+    "label": "GB200"
+   },
+   {
+    "id": "SB2",
+    "anchor": "#tpu-networking",
+    "label": "TPU networking"
+   },
+   {
+    "id": "SB3",
+    "anchor": "#a-deeper-dive-into-tpu-communication-primitives",
+    "label": "TPU collective reach"
+   },
+   {
+    "id": "N-wp",
+    "label": "H100 in depth"
+   },
+   {
+    "id": "N-tune",
+    "label": "§1.4"
+   },
+   {
+    "id": "N-gb200"
+   },
+   {
+    "id": "N-rubin"
+   },
+   {
+    "id": "A-trn2"
+   },
+   {
+    "id": "A-trn2-nki"
+   },
+   {
+    "id": "A-trn2-sys"
+   },
+   {
+    "id": "A-trn3"
+   },
+   {
+    "id": "A-trn3-sys"
+   },
+   {
+    "id": "A-trn4"
+   },
+   {
+    "id": "A-torch"
+   },
+   {
+    "id": "G-8dd"
+   },
+   {
+    "id": "J-hw"
+   },
+   {
+    "id": "T-pt",
+    "label": "A TPU primer"
+   },
+   {
+    "id": "N-graphs"
+   },
+   {
+    "id": "SB8",
+    "anchor": "#whats-the-llama-serving-story",
+    "label": "FLOPs per dollar"
+   }
+  ],
+  "hasSlides": true
+ }
+}

@@ -1,4 +1,5 @@
 ---
+description: "The TPU serving stack: vLLM on TPU, tpu-inference, torchax, vllm-torchtpu, Ragged Paged Attention, static-shape continuous batching, KV layout."
 objectives:
   - I can describe how TPU serving got from JetStream through PyTorch/XLA and tpu-inference to the October 2026 split, and say which path to use for a new PyTorch or JAX port.
   - I can explain what torchax does to a torch.nn.Linear call, why tpu-inference needs the model as a pure function that returns its KV cache, and where the code ends up as HLO.

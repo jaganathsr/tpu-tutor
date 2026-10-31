@@ -1,4 +1,5 @@
 ---
+description: "Transformer accounting for TPUs: parameter and FLOP counts, 6ND, KV cache size, attention intensity in prefill and decode, MoE batch requirements."
 objectives:
   - I can count the FLOPs of any einsum, and derive 6 × parameters × tokens for training from 2× forward and 4× backward.
   - I can count the parameters of a dense GQA transformer and of an MoE, split into MLP, attention and vocabulary.

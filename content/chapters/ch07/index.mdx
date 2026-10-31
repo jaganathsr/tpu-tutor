@@ -1,4 +1,5 @@
 ---
+description: "LLM inference on TPU: prefill vs decode rooflines, KV-cache-bound decode, batch breakeven, decode sharding, fp8 and int8 quantization with Qwix."
 objectives:
   - I can state the decode step-time lower bound and the general step-time formula, and compute both for a model on a slice.
   - I can compute the compute-bound decode batch for each weight and math precision on v5e, Ironwood, 8i and H100, and explain why KV growth makes it unreachable at long context.

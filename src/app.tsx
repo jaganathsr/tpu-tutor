@@ -8,7 +8,8 @@ import { SlidesPage } from './pages/Slides';
 
 function ThemeToggle() {
   const s = useStore();
-  const cur = s.prefs.theme ?? (document.documentElement.dataset.theme as 'light' | 'dark' | undefined) ?? 'system';
+  const fromDom = typeof document !== 'undefined' ? (document.documentElement.dataset.theme as 'light' | 'dark' | undefined) : undefined;
+  const cur = s.prefs.theme ?? fromDom ?? 'system';
   const next = cur === 'system' ? 'light' : cur === 'light' ? 'dark' : 'system';
   return (
     <button

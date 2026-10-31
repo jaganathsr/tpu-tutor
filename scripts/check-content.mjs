@@ -41,6 +41,7 @@ for (const ch of course.chapters) {
   const mdx = readFileSync(`${dir}/index.mdx`, 'utf8');
   lintText(`${dir}/index.mdx`, mdx.replace(/^---[\s\S]*?---/, ''));
   const fm = load(mdx.match(/^---([\s\S]*?)---/)[1]);
+  if (!fm.description || fm.description.length > 160) report(`${dir}/index.mdx`, 'description missing or over 160 characters (used for search results)');
   for (const s of fm.sources ?? []) if (!sources[s.id]) report(`${dir}/index.mdx`, `frontmatter source ${s.id} unknown`);
 
   if (existsSync(`${dir}/slides.mdx`)) lintText(`${dir}/slides.mdx`, readFileSync(`${dir}/slides.mdx`, 'utf8'));

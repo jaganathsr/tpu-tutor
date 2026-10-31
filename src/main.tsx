@@ -10,5 +10,14 @@ import './styles/tokens.css';
 import './styles/base.css';
 import './styles/components.css';
 import { App } from './app';
+import { currentPath } from './lib/router';
+import { preloadForPath } from './lib/content';
 
-render(<App />, document.getElementById('app')!);
+// The page arrives prerendered for crawlers and first paint; the client app
+// then takes over, since learner progress lives in this browser's storage.
+// Fetch the current page's chunk first so the swap does not flash.
+const root = document.getElementById('app')!;
+preloadForPath(currentPath()).finally(() => {
+  root.textContent = '';
+  render(<App />, root);
+});
