@@ -9,6 +9,8 @@ import { SystolicArray } from '../interactives/SystolicArray';
 import { TensorCoreDiagram } from '../interactives/TensorCoreDiagram';
 import { TorusExplorer } from '../interactives/TorusExplorer';
 import { ModelCalc } from '../interactives/ModelCalc';
+import { ShardingSandbox } from '../interactives/ShardingSandbox';
+import { CollectiveViz } from '../interactives/CollectiveViz';
 
 type Src = { id: string; title: string; url: string; section: string };
 const SRC = sources as Record<string, Src>;
@@ -187,4 +189,6 @@ export const mdxComponents = {
   TensorCoreDiagram,
   TorusExplorer,
   ModelCalc,
+  ShardingSandbox,
+  CollectiveViz,
 };

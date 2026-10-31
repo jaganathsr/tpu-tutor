@@ -1,0 +1,84 @@
+<Slide title="Sharding notation">
+
+| Notation | PartitionSpec | Meaning |
+|---|---|---|
+| $A[I_X, J_Y]$ | `P('X', 'Y')` | I over X, J over Y |
+| $A[I_{XY}, J]$ | `P(('X','Y'), None)` | I over X and Y together |
+| $A[I, J]\{U_X\}$ | `unreduced={'X'}` | partial sums still to add over X |
+
+- One mesh axis per array dimension at most; unmentioned axes replicate.
+
+</Slide>
+
+<Slide title="Four cases for A[I, J] · B[J, K]">
+
+| Case | Sharding | Collective |
+|---|---|---|
+| 1 | J not sharded on either | none |
+| 2 | J sharded on one operand | AllGather it |
+| 3 | J sharded on both, same axis | AllReduce, or ReduceScatter at half cost |
+| 4 | I and K sharded on the same axis | AllGather one first |
+
+Tensor parallelism's second matmul is case 3. FSDP's weights are case 2.
+
+</Slide>
+
+<Slide title="Ring collective costs">
+
+$$
+T_\text{AG} = T_\text{RS} = \frac{V}{W_\text{ici}}, \quad T_\text{AR} = \frac{2V}{W_\text{ici}}, \quad T_\text{A2A} = \frac{V}{4W_\text{ici}}
+$$
+
+<Gloss>V per device; independent of ring size. Divide by the number of axes used. Floor: N/2 µs of hop latency.</Gloss>
+
+| 1 GB per device, Ironwood | AG | AR | A2A | AG over 3 axes |
+|---|---|---|---|---|
+| Time | 5 ms | 10 ms | 1.25 ms | 1.7 ms |
+
+</Slide>
+
+<Slide title="Latency-bound below one microsecond of link">
+
+<Cols>
+<div>
+<Big n="45 kB">per hop on v5e</Big>
+</div>
+<div>
+<Big n="100 kB">per hop on Ironwood</Big>
+</div>
+</Cols>
+
+- Below this, time is hops × 1 µs. Decode collectives live here.
+- Without wraparound the ring is open: a 4-long v5e axis took 560–680 µs against a 373 µs formula.
+
+</Slide>
+
+<Slide title="Collective matmul">
+
+- Split the AllGather into N − 1 collective-permutes; multiply the shard you have while the next one arrives.
+- XLA: windowed einsum, above `xla_jf_spmd_threshold_for_windowed_einsum_mib`.
+- Book, shard_map by hand: 311 µs → 244 µs, against 224 µs with no communication.
+- GPU equivalents: PyTorch async-TP (SymmetricMemory), TE userbuffers, Flux. Same algorithm (Wang et al.), more machinery, because NCCL competes for SMs.
+
+</Slide>
+
+<Slide title="ICI roofline: Ironwood is about 5× stricter">
+
+| Chip | $C/W_\text{ici}$ per axis |
+|---|---|
+| v5p (book) | 2,550 |
+| Ironwood (docs) | 11,535 |
+
+- Moving weights (AllGather W) is compute-bound when B > $C/W_\text{ici}$.
+- Moving activations beats moving weights at large B only when D > $2C/W_\text{ici}$: 23,000 on Ironwood.
+
+</Slide>
+
+<Slide title="Against NCCL">
+
+- Same ring math: busbw factors $(n-1)/n$ and $2(n-1)/n$.
+- H100 node AllReduce: about 370 GB/s only at about 10 GB messages; a 58 MB tensor-parallel AllReduce gets about 150 GB/s.
+- TPU v5e AllGather: about 95% of peak at about 10 MB.
+- AllGather of bf16[1024, 16384] over 8 devices: H100 node 65 µs; one Ironwood axis 168 µs; three axes about 56 µs.
+
+</Slide>

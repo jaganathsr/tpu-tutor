@@ -1,0 +1,85 @@
+# Chapter 5 flashcards.
+- id: ch05-c-notation
+  front: "What does $A[I_{XY}, J]\\{U_Z\\}$ mean?"
+  back: "I is sharded over the combined X and Y axes; J is whole; each device holds a partial sum still to be reduced over Z."
+  source: SB3
+- id: ch05-c-pspec
+  front: "PartitionSpec for $A[I_X, J_Y]$, and for $A[I_{XY}, J]$?"
+  back: "P('X', 'Y') and P(('X', 'Y'), None)."
+  source: J-sharding-api
+- id: ch05-c-rule
+  front: Two rules of sharding notation?
+  back: "A mesh axis shards at most one dimension of an array. Any unmentioned mesh axis replicates the array."
+  source: SB3
+- id: ch05-c-case1
+  front: Case 1 of a sharded matmul?
+  back: "Neither operand is sharded on the contracting dimension: multiply locally, no communication."
+  source: SB3
+- id: ch05-c-case2
+  front: Case 2?
+  back: "One operand is sharded on the contracting dimension: AllGather it (or reshard the other and AllReduce the result)."
+  source: SB3
+- id: ch05-c-case3
+  front: Case 3?
+  back: "Both operands are sharded on the contracting dimension along the same axis: local partial sums, then AllReduce, or ReduceScatter to leave the result sharded."
+  source: SB3
+- id: ch05-c-case4
+  front: Case 4?
+  back: "Both operands have a non-contracting dimension sharded on the same axis: only diagonal blocks are computable. AllGather one first."
+  source: SB3
+- id: ch05-c-ag
+  front: AllGather cost on a bidirectional ring?
+  back: "$V/W_\\text{ici}$, where V is the gathered size per device. Independent of the number of chips."
+  source: SB3
+- id: ch05-c-ag-why
+  front: Why is ring AllGather time independent of N?
+  back: "N/2 steps, each moving V/N bytes per link at half of $W_\\text{ici}$ per direction: the N cancels. Only the N/2 µs latency term grows."
+  source: SB3
+- id: ch05-c-costs
+  front: ReduceScatter, AllReduce and AllToAll costs on a ring?
+  back: "RS $V/W$; AR $2V/W$; AllToAll $V/(4W)$ in 1D. Divide by the number of axes used."
+  source: SB3
+- id: ch05-c-axes
+  front: Why shard as finely as possible?
+  back: "A collective over k mesh axes uses k axes' links at once: time divides by k. Idle axes are idle links."
+  source: SB3
+- id: ch05-c-latency
+  front: Latency-bound threshold per hop on v5e and Ironwood?
+  back: "45 kB and 100 kB: 1 µs times one link's one-way bandwidth."
+  source: derived
+- id: ch05-c-iw-numbers
+  front: Times for 1 GB per device on one Ironwood axis?
+  back: "AllGather or ReduceScatter 5 ms; AllReduce 10 ms; AllToAll 1.25 ms; AllGather over a cube's 3 axes 1.7 ms."
+  source: derived
+- id: ch05-c-collmm
+  front: What is collective matmul (windowed einsum)?
+  back: "Split an AllGather (or ReduceScatter) next to a matmul into N − 1 collective-permutes, each overlapped with a partial matmul. XLA does it above a size threshold."
+  source: P-CollMM, X-flags
+- id: ch05-c-collmm-number
+  front: Book's collective matmul result?
+  back: "311 µs with jit's blocking AllGather; 244 µs with collective matmul; 224 µs unsharded baseline."
+  source: SB10
+- id: ch05-c-async
+  front: How do overlapped collectives appear in an XLA profile?
+  back: "As -start and -done pairs (all-gather-start / all-gather-done, collective-permute-start / done). Work between them overlaps."
+  source: X-async
+- id: ch05-c-gpu-overlap
+  front: GPU equivalents of collective matmul?
+  back: "PyTorch async-TP (SymmetricMemory, copy engines; about 29% faster forward on Llama 3 8B), Transformer Engine userbuffers, Flux fused kernels."
+  source: PT-asynctp
+- id: ch05-c-busbw
+  front: How does NCCL busbw relate to the TPU ring formula?
+  back: "busbw rescales time by (n−1)/n for AllGather and ReduceScatter and 2(n−1)/n for AllReduce: the same ring factors, with (n−1)/n → 1."
+  source: N-nccltests
+- id: ch05-c-reach
+  front: Message size needed to reach peak collective bandwidth, H100 node against TPU?
+  back: "H100 AllReduce: about 370 GB/s only near 10 GB per device; 58 MB gets about 150 GB/s. v5e AllGather: about 95% of peak at about 10 MB."
+  source: SB12, SB3
+- id: ch05-c-ici-intensity
+  front: "$C/W_\\text{ici}$ per axis on v5p and Ironwood?"
+  back: "v5p 2,550 (book) or 2,295 (docs); Ironwood 11,535 (docs-derived). Ironwood's ICI thresholds are about 5× stricter."
+  source: derived
+- id: ch05-c-a2a-gpu
+  front: AllToAll on a TPU ring against an NVLink node?
+  back: "TPU 1D ring: $B/(4W)$. NVLink node, one hop to all: about $B/(8W)$. Across GPU nodes it degrades by more than 4×."
+  source: SB12

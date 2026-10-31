@@ -1,0 +1,204 @@
+---
+objectives:
+  - I can read and write sharding notation, such as A[I_X, J_Y] and the unreduced marker {U_X}, and the equivalent JAX PartitionSpec. I can say what each device holds for a given mesh and spec.
+  - I can classify any sharded matmul into the four cases and name the collective each needs.
+  - I can derive the bidirectional-ring AllGather time V / W_ici and explain why it does not depend on the number of chips. I can extend it to several axes, to AllReduce (2×) and to AllToAll (¼).
+  - I can say when a collective is latency-bound, and compute the threshold on v5e and Ironwood.
+  - I can explain collective matmul (decomposing an AllGather into collective-permutes overlapped with partial matmuls) and compare it with async tensor parallelism on GPUs.
+  - I can relate the book's formulas to NCCL's algbw and busbw, and compare how quickly TPU and GPU collectives reach peak bandwidth.
+teachback:
+  - Why doesn't AllGather time on a ring depend on how many chips are in the ring?
+  - Explain to a Megatron user what XLA's collective matmul does, and what they would have to do on a GPU to get the same overlap.
+  - Given A[B, D] sharded P('X', 'Y') and W[D, F] sharded P('Y', None), what happens and what does it cost on an Ironwood 4×4×4 cube?
+  - Why is an AllToAll a quarter of an AllGather on a TPU ring, and what does that mean for MoE?
+sources:
+  - { id: SB3, anchor: "#partitioning-notation-and-collective-operations", label: "Notation" }
+  - { id: SB3, anchor: "#computation-with-sharded-arrays", label: "The four cases" }
+  - { id: SB3, anchor: "#a-deeper-dive-into-tpu-communication-primitives", label: "Collective costs" }
+  - { id: SB3, anchor: "#our-final-communication-primitive-the-alltoall", label: "AllToAll" }
+  - { id: SB3, anchor: "#how-to-overlap-matmul-communication-with-compute", label: "Collective matmul" }
+  - { id: SB3, anchor: "#some-problems-to-work", label: "Problems" }
+  - { id: SB10, anchor: "#manual-sharding-mode-via-shard-map", label: "Collective matmul in shard_map" }
+  - { id: SB12, anchor: "#how-do-collectives-work-on-gpus", label: "GPU collectives" }
+  - { id: J-sharding-api }
+  - { id: J-shmap }
+  - { id: P-CollMM }
+  - { id: X-flags, label: "windowed einsum, async collectives" }
+  - { id: X-async }
+  - { id: P-Megatron, label: "§3" }
+  - { id: P-SeqPar }
+  - { id: PT-asynctp }
+  - { id: P-Flux }
+  - { id: N-teoverlap }
+  - { id: N-nccltests }
+  - { id: D-7x }
+---
+
+This chapter is the mechanics under every parallelism strategy in Chapters 6–8. A sharded matmul is a local matmul plus at most a few collectives, and on a TPU torus each collective has a simple cost formula. Once you can say which collective a sharding implies and what it costs, choosing a mesh is arithmetic.
+
+## Notation
+
+A **mesh** is a grid of devices with named axes, for example `{X: 4, Y: 2}` for 8 devices. A **sharding** says which mesh axes split which array dimensions. The Scaling Book writes it with subscripts <Cite id="SB3" at="#a-unified-notation-for-sharding" />:
+
+| Notation | Meaning | JAX PartitionSpec |
+|---|---|---|
+| $A[I_X, J_Y]$ | I split over X, J split over Y | `P('X', 'Y')` |
+| $A[I_{XY}, J]$ | I split over X and Y together (8 ways), J whole | `P(('X', 'Y'), None)` |
+| $A[I, J]$ | fully replicated on every device | `P(None, None)` or `P()` |
+| $A[I_X, J]\{U_Y\}$ | as $A[I_X, J]$, but each device holds a partial sum still to be added over Y | no PartitionSpec field; `unreduced={'Y'}` in explicit mode |
+
+Two rules follow from the meaning. A mesh axis can split at most one dimension of an array: $A[I_X, J_X]$ is invalid. Any mesh axis not mentioned replicates the array: on `{X: 4, Y: 2}`, $A[I_X, J]$ is held twice, once in each Y row <Cite id="SB3" at="#a-unified-notation-for-sharding" />. In JAX the spec is attached with `NamedSharding(mesh, P(...))` <Cite id="J-sharding-api" />.
+
+Elementwise operations on sharded arrays need no communication. Communication appears at contractions.
+
+## The four cases of a sharded matmul
+
+For $A[I, J] \cdot B[J, K] \to C[I, K]$, where J is the contracting dimension <Cite id="SB3" at="#computation-with-sharded-arrays" />:
+
+1. **Neither operand is sharded on J.** Multiply locally. $A[I_X, J] \cdot B[J, K_Y] \to C[I_X, K_Y]$, no communication.
+2. **One operand is sharded on J.** AllGather it over that axis, then multiply locally. $\text{AllGather}_X(A[I, J_X]) \to A[I, J]$.
+3. **Both are sharded on J along the same axis.** Each device multiplies its slice of J and gets a partial sum, $C[I, K]\{U_X\}$. Add the partial sums with an **AllReduce**, or with a **ReduceScatter** if the result may stay sharded, $C[I_X, K]$, at half the cost.
+4. **Both have a non-contracting dimension sharded on the same axis**, $A[I_X, J] \cdot B[J, K_X]$. Each device can compute only a diagonal block. AllGather one operand first.
+
+Every Megatron-style tensor-parallel layer is case 3 for its second matmul. Every FSDP layer is case 2 on its weights.
+
+<Interactive caption={<><b>Sharding sandbox.</b> Type a mesh, an array shape and a PartitionSpec to see the shard each device holds and which devices share it. Turn on the second operand to see which of the four cases the matmul falls into, the collectives XLA would need, and their cost on the chosen chip if nothing overlaps. The default is a tensor-parallel down-projection: case 3, an AllReduce over Y.</>}>
+  <ShardingSandbox />
+</Interactive>
+
+## The four collectives and their cost
+
+| Collective | Effect in notation | Use |
+|---|---|---|
+| AllGather | $A[I_X, J] \to A[I, J]$ | assemble a sharded operand (FSDP weights, sequence-parallel activations) |
+| ReduceScatter | $A[I, J]\{U_X\} \to A[I_X, J]$ | sum partial results and leave them sharded |
+| AllReduce | $A[I, J]\{U_X\} \to A[I, J]$ | sum partial results everywhere; equals ReduceScatter + AllGather |
+| AllToAll | $A[I, J_X] \to A[I_X, J]$ | move which dimension is sharded (MoE routing, Ulysses-style attention) |
+
+On a ring with wraparound, an AllGather passes shards around the ring. In the bidirectional version each device sends its shard both ways at once, so after $N/2$ steps every device has everything. Each step moves one shard of $V/N$ bytes over each link, at $W_\text{ici}/2$ per direction. Multiply out:
+
+$$
+T_\text{AllGather} = \frac{N}{2} \cdot \frac{V/N}{W_\text{ici}/2} = \frac{V}{W_\text{ici}}
+\tag{5.1}
+$$
+
+<Gloss>V is the size of the gathered array per device. The number of chips cancels: more chips means more steps, but each step moves a smaller shard.</Gloss>
+
+This is the most useful fact in the chapter: a ring collective's bandwidth cost does not grow with the ring <Cite id="SB3" at="#a-deeper-dive-into-tpu-communication-primitives" />. The others follow from it:
+
+$$
+T_\text{RS} = \frac{V}{W_\text{ici}}, \qquad T_\text{AR} = \frac{2V}{W_\text{ici}}, \qquad T_\text{A2A} = \frac{V}{4\,W_\text{ici}} \;\text{(1D ring)}
+\tag{5.2}
+$$
+
+<Gloss>A ReduceScatter is an AllGather run backwards. An AllReduce is both. An AllToAll sends each piece only as far as its destination, a quarter of the ring on average with both directions in use.</Gloss>
+
+**More axes, more bandwidth.** A collective over an array sharded on several mesh axes can split its data across those axes and use their links at once. The cost divides by the number of axes: on a 3D torus, an AllGather over all three axes takes $V / (3 W_\text{ici})$ <Cite id="SB3" at="#a-deeper-dive-into-tpu-communication-primitives" />. This is why the book advises sharding "as finely as possible": idle axes are idle links.
+
+**Latency floor.** Each step costs about 1 µs regardless of size, so
+
+$$
+T = \max\left(\frac{N}{2} \cdot 1\,\mu\text{s},\; \frac{V}{W_\text{ici}}\right)
+\tag{5.3}
+$$
+
+<Gloss>If each step's chunk is small enough that sending it takes less than a microsecond, the hop latency sets the time.</Gloss>
+
+The per-hop threshold is one microsecond of one link's bandwidth: 45 kB on v5e, 100 kB on Ironwood <Derived />. Decode-time collectives usually fall below it (Chapter 7).
+
+With $W_\text{ici}$ = 200 GB/s per axis on Ironwood (Chapter 3), the numbers to remember for one axis are:
+
+| Collective, 1 GB per device, one Ironwood axis | Time |
+|---|---|
+| AllGather or ReduceScatter | 5 ms |
+| AllReduce | 10 ms |
+| AllToAll | 1.25 ms |
+| AllGather over 3 axes of a cube | 1.7 ms |
+
+<Interactive caption={<><b>Ring collectives.</b> Step through an AllGather (unidirectional or bidirectional), a ReduceScatter or an AllToAll. Each square is a shard, numbered by origin; orange marks a shard that arrived on this step. The busiest link's load sets the bandwidth time. Compare the simulated time with the book's formula, and change the number of devices to see the bandwidth time stay constant.</>}>
+  <CollectiveViz />
+</Interactive>
+
+<Worked title="No wraparound on a 4-device axis">
+
+The Scaling Book's pop quiz <Cite id="SB3" at="#a-deeper-dive-into-tpu-communication-primitives" />: $\text{AllGather}_Y(A[E_Y, F])$ with $E = 2{,}048$, $F = 8{,}192$ in bf16, on a v5e mesh `{X: 8, Y: 4}`.
+
+- Each device holds 8.4 MB, and the gathered array is 34 MB per device.
+- With a closed ring, the formula gives $34 \times 10^6 / 9 \times 10^{10} = 373\ \mu$s.
+- But a 4-long v5e axis has no wraparound (only length-16 axes wrap). The last shard must cross 3 links one way: $3 \cdot 8.4 \times 10^6 / 4.5 \times 10^{10} = 559\ \mu$s.
+- Measured in the book's profile: 680 µs.
+
+Computed in `scripts/ch05_collectives.py`.
+
+</Worked>
+
+<Worked title="Collectives on a v4 cube">
+
+The Scaling Book's Chapter 3, problem 2 <Cite id="SB3" at="#some-problems-to-work" />: a v4 4×4×4 with full wraparound, $W_\text{ici}$ = 90 GB/s; $B = 1{,}024$, $D = 4{,}096$ in bf16; array $[B_X, D_Y]$.
+
+- $\text{AllGather}_X$: each device ends with $[B, D/4]$, 2.1 MB, so 23 µs.
+- $\text{AllGather}_{XY}$: ends with $[B, D]$, 8.4 MB, over 2 axes, so 47 µs.
+- $\text{AllReduce}_Z$ of $[B_X, D_Y]\{U_Z\}$: $2 \cdot 0.5\ \text{MB} / 90\ \text{GB/s} = 11.7\ \mu$s.
+
+The book adds a trick. In (a) the Z axis is idle. Resharding for free to $[B_{XZ}, D_Y]$ spreads the same gather over two axes and halves its time to about 11.5 µs.
+
+</Worked>
+
+## Overlapping communication with compute: collective matmul
+
+Formula 5.1 assumes the matmul waits for the AllGather to finish. It need not. Wang et al. showed that an AllGather feeding a matmul can be split into $N - 1$ ring steps, each a `collective-permute` of one shard, with the partial matmul on the shard already present running while the next shard is in flight <Cite id="P-CollMM" />. A ReduceScatter consuming a matmul's output splits the same way. XLA implements this in its SPMD partitioner as "windowed einsum". The flag `xla_jf_spmd_threshold_for_windowed_einsum_mib` sets the minimum size at which it applies <Cite id="X-flags" />.
+
+The Scaling Book's Chapter 10 writes the same thing by hand in `shard_map` with `ppermute` <Cite id="SB10" at="#manual-sharding-mode-via-shard-map" />:
+
+- default `jit`: 311 µs, with a blocking AllGather;
+- collective matmul: 244 µs;
+- an unsharded baseline: 224 µs.
+
+Overlap recovered 77% of the communication cost.
+
+In a profile, overlapped collectives appear as `all-gather-start` and `all-gather-done` (or `collective-permute-start/done`) pairs. Compute scheduled between the start and the done is the overlap window <Cite id="X-async" />. Chapter 10 reads them.
+
+<GpuAnalogy title="GPU analogy: async tensor parallelism">
+<p>The GPU world arrived at the same decomposition from the Megatron side. Megatron tensor parallelism puts an AllReduce after each layer's second matmul <Cite id="P-Megatron" s="§3" />. Sequence parallelism splits it into ReduceScatter plus AllGather around the matmuls <Cite id="P-SeqPar" />. Overlapping those with the matmuls now ships as:</p>
+<ul>
+<li>PyTorch async-TP, which uses SymmetricMemory and copy engines. It reports about 29% faster forward and 8% faster end to end for Llama 3 8B on H100s, and PyTorch's own write-up cites Google's paper as the algorithm <Cite id="PT-asynctp" />.</li>
+<li>Transformer Engine's userbuffers overlap <Cite id="N-teoverlap" />.</li>
+<li>Fused communication-GEMM kernels such as Flux <Cite id="P-Flux" />.</li>
+</ul>
+</GpuAnalogy>
+
+<AnalogyBreaks>
+<p>The difference is who does it. On a GPU, NCCL kernels run on SMs and compete with the GEMM for them, so overlap needs special libraries, separate streams or fused kernels. On a TPU, XLA schedules the collective-permutes and partial matmuls as ordinary ops in one compiled program. The DMA engines move the data without taking compute units away from the MXUs. When XLA's heuristics do not trigger, you write it yourself in `shard_map` or Pallas (Chapter 10).</p>
+</AnalogyBreaks>
+
+## Which operand to move: the ICI roofline
+
+Case 2 has an alternative. For $X[B, D] \cdot W[D_X, F]$, you can AllGather W (strategy 1), or reshard X to $X[B, D_X]$, multiply locally and AllReduce the $[B, F]$ result (strategy 2). With $C / W_\text{ici}$ as the ICI intensity <Cite id="SB3" at="#some-problems-to-work" s="Q4" />:
+
+- Strategy 1 moves the weight, $2DF$ bytes, and is compute-bound when $B > C / W_\text{ici}$.
+- Strategy 2 moves the activations, $4BF$ bytes. For large B, it beats strategy 1 when $D > 2C/W_\text{ici}$.
+
+| Chip | $C / W_\text{ici}$ per axis | Strategy 2 wins at large B when $D >$ |
+|---|---|---|
+| v5p (book, 1.8e11) | 2,550 | 5,100 |
+| v5p (docs, 2e11) | 2,295 | 4,590 |
+| Ironwood (docs, 2e11) | 11,535 | 23,070 |
+
+Computed in `scripts/ch05_collectives.py` <Derived />. Ironwood's per-axis ICI intensity is 4.5–5× v5p's: its FLOPs grew 5× while per-link ICI bandwidth stayed the same <Cite id="D-7x" />. Every ICI threshold in Chapter 6 moves by the same factor.
+
+## TPU collectives against NCCL
+
+**Same formula.** NCCL's tests report "bus bandwidth", which rescales measured time by $(n-1)/n$ for AllGather and ReduceScatter and $2(n-1)/n$ for AllReduce, so it can be compared with link peak <Cite id="N-nccltests" />. These are the ring factors in formula 5.1, with $(n-1)/n \to 1$. Inside an NVLink node, a GPU AllGather costs bytes over per-GPU egress, the same form as on a TPU axis <Cite id="SB12" at="#intra-node-collectives" />.
+
+**Different reach.**
+
+- On the GPU side, an 8×H100 AllReduce reaches its peak of about 370 GB/s bus bandwidth only for messages near 10 GB per device. LLaMA-3-70B's per-layer tensor-parallel AllReduce, 58 MB, reaches about 150 GB/s <Cite id="SB12" at="#intra-node-collectives" />.
+- On the TPU side, the book measures a v5e AllGather reaching about 95% of peak at about 10 MB in total <Cite id="SB3" at="#a-deeper-dive-into-tpu-communication-primitives" />. Practical sizes run near the formula on TPU, and well below it on GPU.
+
+**Different topology.**
+
+- Inside an NVLink node, every GPU reaches every other in one hop. An AllToAll costs about $B/(8W)$, half a TPU ring's $B/(4W)$. Across nodes it degrades by more than 4× <Cite id="SB12" at="#intra-node-collectives" />.
+- For a single axis, an 8-GPU H100 node is faster than one Ironwood ring axis. An AllGather of bf16[1024, 16384] takes 65 µs on the node against 168 µs on one axis.
+- Spread over a cube's three axes, Ironwood takes about 56 µs. At 9,216 chips it keeps that per-axis bandwidth; the GPU falls to its scale-out network beyond 8 or 72 GPUs.
+
+Computed in `scripts/ch05_collectives.py`.

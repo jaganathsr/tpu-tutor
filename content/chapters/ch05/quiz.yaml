@@ -1,0 +1,146 @@
+# Chapter 5 quiz. Numbers recomputed in scripts/ch05_collectives.py.
+- id: ch05-bytes-per-device
+  type: numeric
+  prompt: "An fp32[1024, 4096] array is sharded $A[I_{XY}, J]$ on a mesh {X: 8, Y: 2}. How many bytes does each device hold, in MiB?"
+  answer: 1
+  tolerance: 0.01
+  unit: MiB
+  explanation: "I splits 16 ways, so each device holds fp32[64, 4096] = $4 \\cdot 64 \\cdot 4096$ = 1 MiB."
+  adapted_from: SB3 pop quiz 1
+  source: "SB3 #partitioning-notation-and-collective-operations"
+
+- id: ch05-replication
+  type: numeric
+  prompt: "An array is sharded $A[I_X, J, K]$ on a mesh {X: 4, Y: 8, Z: 2}. Total bytes stored across all devices, as a multiple of one copy of A?"
+  answer: 16
+  tolerance: 0.001
+  unit: ×
+  explanation: "X splits it into 4 shards; Y and Z are unused, so every shard is replicated $8 \\cdot 2 = 16$ times."
+  adapted_from: SB3 Q1
+  source: "SB3 #some-problems-to-work"
+
+- id: ch05-case
+  type: mcq
+  prompt: "$A[I, J_X] \\cdot B[J_X, K] \\to C[I, K]$. What must happen after the local matmul?"
+  options:
+    - text: "An AllReduce over X, or a ReduceScatter if C may stay sharded."
+      correct: true
+      why: "Case 3: both operands are sharded on the contracting dimension, so each device holds a partial sum $C[I, K]\\{U_X\\}$."
+    - text: "Nothing; the result is already complete."
+      why: "Each device summed only its slice of J. The partial sums still have to be added."
+    - text: "An AllGather of A over X first."
+      why: "That is case 2. Here both operands are sharded the same way on J, so the local matmul is valid as is."
+    - text: "An AllToAll."
+      why: "AllToAll moves which dimension is sharded. Nothing needs re-sharding here."
+  source: "SB3 #case-3-both-multiplicands-have-sharded-contracting-dimensions"
+
+- id: ch05-case4
+  type: mcq
+  prompt: "Why is $A[I_X, J] \\cdot B[J, K_X]$ invalid as a local matmul?"
+  options:
+    - text: "Device x holds rows $I_x$ and columns $K_x$, so it can compute only the diagonal block $C[I_x, K_x]$; the off-diagonal blocks need data from other devices."
+      correct: true
+      why: "Case 4. One operand must be AllGathered first."
+    - text: "A mesh axis may appear only once per array."
+      why: "That rule is per array, and each array here uses X once."
+    - text: "J is not sharded."
+      why: "An unsharded contracting dimension is case 1 and is fine on its own. The clash is between I and K."
+    - text: "The result would need an AllReduce."
+      why: "No partial sums are produced; blocks are missing."
+  source: "SB3 #case-4-both-multiplicands-have-a-non-contracting-dimension-sharded-along-the-same-axis"
+
+- id: ch05-ag-independence
+  type: mcq
+  prompt: "Why does a bidirectional-ring AllGather take $V/W_\\text{ici}$ regardless of the number of chips N?"
+  options:
+    - text: "It takes N/2 steps, but each moves only V/N bytes per link: the product is constant."
+      correct: true
+      why: "$\\frac{N}{2} \\cdot \\frac{V/N}{W_\\text{ici}/2} = V/W_\\text{ici}$. Only the latency term, N/2 µs, grows with N."
+    - text: "The OCS broadcasts the data to all chips at once."
+      why: "OCS sets up links; it does not broadcast or touch packets."
+    - text: "XLA compresses the shards."
+      why: "No compression is involved."
+    - text: "It is not true; time grows linearly with N."
+      why: "Only the latency floor grows with N. The bandwidth term is constant."
+  source: "SB3 #a-deeper-dive-into-tpu-communication-primitives"
+
+- id: ch05-v4-ag
+  type: numeric
+  prompt: "On a TPU v4 4×4×4 cube ($W_\\text{ici}$ = 90 GB/s per axis), $B = 1024$, $D = 4096$ in bf16, sharded $[B_X, D_Y]$. How long does $\\text{AllGather}_X$ take, in µs?"
+  answer: 23.3
+  tolerance: 0.04
+  unit: µs
+  explanation: "After gathering over X each device holds $[B, D/4]$: $2 \\cdot 1024 \\cdot 1024$ = 2.1 MB. Time 2.1 MB / 90 GB/s = 23 µs. Resharding to $[B_{XZ}, D_Y]$ uses the idle Z axis and halves it."
+  adapted_from: SB3 Q2
+  source: "SB3 #some-problems-to-work"
+
+- id: ch05-a2a
+  type: numeric
+  prompt: "On one Ironwood ring axis ($W_\\text{ici}$ = 200 GB/s), an AllToAll moves an array of 1 GB per device. Using $V/(4W_\\text{ici})$, how long does it take, in ms?"
+  answer: 1.25
+  tolerance: 0.03
+  unit: ms
+  explanation: "$10^9 / (4 \\cdot 2\\times10^{11}) = 1.25$ ms, a quarter of an AllGather of the same size. MoE dispatch and combine are AllToAlls."
+  source: "SB3 #our-final-communication-primitive-the-alltoall"
+
+- id: ch05-latency
+  type: numeric
+  prompt: "Ironwood ICI links run at 100 GB/s each way with about 1 µs per hop. Below what chunk size per hop, in kB, is a ring collective latency-bound?"
+  answer: 100
+  tolerance: 0.05
+  unit: kB
+  explanation: "$10^{11}$ B/s × $10^{-6}$ s = 100 kB. On v5e (45 GB/s) the threshold is 45 kB."
+  source: "SB3 #a-deeper-dive-into-tpu-communication-primitives"
+
+- id: ch05-nowrap
+  type: scenario
+  prompt: "An AllGather over a 4-long axis of a v5e slice takes 560–680 µs, where $V/W_\\text{ici}$ predicts 373 µs. What explains most of the gap?"
+  options:
+    - text: "v5e wraps only 16-long axes, so this ring is open and the last shard crosses 3 links one way."
+      correct: true
+      why: "$3 \\cdot 8.4\\,\\text{MB} / 45\\,\\text{GB/s} = 559\\ \\mu$s. The rest is overhead; the book measured 680 µs."
+    - text: "The formula ignores the 1 µs per hop latency."
+      why: "3 µs of latency cannot explain about 200 µs."
+    - text: "bf16 is transferred as fp32."
+      why: "Collectives move the array's own dtype."
+    - text: "The X axis is busy with another collective."
+      why: "Nothing else is running in the scenario."
+  adapted_from: SB3 pop quiz (AllGather time)
+  source: "SB3 #a-deeper-dive-into-tpu-communication-primitives"
+
+- id: ch05-strategy
+  type: scenario
+  prompt: "On Ironwood ($C/W_\\text{ici}$ ≈ 11,500), you compute $X[B, D] \\cdot W[D_X, F]$ with $D = 8192$ and a large batch. Which costs less communication?"
+  options:
+    - text: "AllGather W (move weights): at large B, matmul-then-AllReduce wins only when D exceeds about 23,000."
+      correct: true
+      why: "Strategy 2 moves activations ($4BF$); it beats moving weights ($2DF$) at large B only if $D > 2C/W_\\text{ici}$, about 23,070 on Ironwood. D = 8,192 is below that."
+    - text: "Matmul locally then AllReduce, because activations are always smaller than weights."
+      why: "At large B, activations of size $B \\cdot F$ can exceed the weight $D \\cdot F$."
+    - text: "They cost the same."
+      why: "They move different arrays: $2DF$ against $4BF$ bytes."
+    - text: "Neither needs communication."
+      why: "W is sharded on the contracting dimension, so case 2 applies."
+  adapted_from: SB3 Q4
+  source: "SB3 #some-problems-to-work"
+
+- id: ch05-overlap
+  type: mcq
+  prompt: "In a TPU profile, an all-gather-start op is followed by a dot fusion and then all-gather-done. What does that show?"
+  options:
+    - text: "The AllGather is asynchronous and overlaps with the matmul scheduled between start and done."
+      correct: true
+      why: "XLA's async collectives split into start/done pairs. Work between them is the overlap window."
+    - text: "The AllGather ran twice."
+      why: "Start and done are the two halves of one asynchronous collective."
+    - text: "The matmul is waiting for the AllGather."
+      why: "If it depended on the gathered data, it would be scheduled after the done op."
+    - text: "The collective was offloaded to the host."
+      why: "ICI collectives run on the chips' DMA engines."
+  source: "X-async"
+
+- id: ch05-explain
+  type: free
+  prompt: "Explain to a Megatron user what XLA's collective matmul (windowed einsum) does and how it differs from getting the same overlap on GPUs."
+  model_answer: "In tensor parallelism, the AllGather before the first matmul and the ReduceScatter after the second sit on the critical path. Collective matmul splits each into N − 1 ring steps: at each step a device multiplies the shard it already has while a collective-permute sends that shard to its neighbour, so communication hides behind the partial matmuls. On TPU the XLA SPMD partitioner applies this automatically above a size threshold (xla_jf_spmd_threshold_for_windowed_einsum_mib), as ordinary ops in one compiled program, and the DMA engines move the data without taking MXU time. The book's hand-written version took a matmul from 311 µs to 244 µs against a 224 µs no-communication baseline. On GPUs the same algorithm (Wang et al., cited by PyTorch async-TP) needs extra machinery because NCCL kernels compete with the GEMM for SMs: SymmetricMemory and copy engines in PyTorch async-TP, Transformer Engine userbuffers, or fused kernels like Flux."
+  source: "P-CollMM"
