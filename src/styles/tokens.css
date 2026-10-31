@@ -1,0 +1,103 @@
+/* Design tokens. Every color used anywhere in the app is defined here.
+   Contrast targets (checked by scripts/check-contrast.mjs):
+   ink on paper >= 7:1, ink-2 on paper >= 7:1, accent on paper >= 7:1,
+   ok/bad text on their tints >= 4.5:1. */
+
+:root {
+  --paper: #f6f6f3;
+  --paper-2: #ecece7;      /* sunken areas: code, inputs, chart plot area */
+  --ink: #1b1d20;
+  --ink-2: #464b52;        /* secondary text: captions, metadata */
+  --ink-3: #6d727a;        /* tertiary: axis ticks, disabled. Not for prose. */
+  --rule: #cfd0c9;
+  --rule-strong: #9a9c95;
+  --accent: #2c4e9e;       /* links, focus, active state. Nothing else. */
+  --accent-tint: #e3e8f4;
+  --callout: #e8ece6;      /* GPU analogy, notes */
+  --callout-rule: #5e6e62;
+  --breaks: #f1ebe0;       /* where the analogy breaks */
+  --breaks-rule: #8a6a3a;
+  --ok: #2d6a3b;
+  --ok-tint: #e2eee4;
+  --bad: #a2392b;
+  --bad-tint: #f5e4e0;
+  --flag: #7a5a14;         /* unverified / provisional tags */
+  --flag-tint: #f3ead2;
+
+  /* Chart series: three slots, validated all-pairs for CVD (dataviz validator).
+     Charts never need more than three; a fourth series folds or facets. */
+  --s1: #2c5fb8;
+  --s2: #c25a1c;
+  --s3: #13866a;
+
+  --font-body: 'Source Serif 4 Variable', 'Source Serif 4', Georgia, serif;
+  --font-ui: 'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  /* Type scale: 18px base, ratio ~1.2 (minor third), kept modest. */
+  --fs-body: 1.125rem;
+  --fs-small: 0.9375rem;
+  --fs-xsmall: 0.8125rem;
+  --fs-h3: 1.1875rem;
+  --fs-h2: 1.4375rem;
+  --fs-h1: 1.9375rem;
+  --lh-body: 1.62;
+
+  --measure: 40rem;        /* ~68 characters of Source Serif 4 at 18px */
+  --margin-col: 14.5rem;
+  --left-col: 13.5rem;
+  --gap: 2.75rem;
+  --radius: 3px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --paper: #17191c;
+    --paper-2: #202328;
+    --ink: #e7e5df;
+    --ink-2: #b4b7bc;
+    --ink-3: #8b9097;
+    --rule: #33373d;
+    --rule-strong: #565b62;
+    --accent: #a9bdf2;
+    --accent-tint: #252d40;
+    --callout: #1f2622;
+    --callout-rule: #8fa595;
+    --breaks: #29241c;
+    --breaks-rule: #c9a46a;
+    --ok: #9fd3aa;
+    --ok-tint: #1d2b21;
+    --bad: #f2a596;
+    --bad-tint: #33201d;
+    --flag: #e3c47e;
+    --flag-tint: #2c2617;
+    --s1: #5a82dc;
+    --s2: #d9702f;
+    --s3: #23a582;
+  }
+}
+
+:root[data-theme='dark'] {
+  --paper: #17191c;
+  --paper-2: #202328;
+  --ink: #e7e5df;
+  --ink-2: #b4b7bc;
+  --ink-3: #8b9097;
+  --rule: #33373d;
+  --rule-strong: #565b62;
+  --accent: #a9bdf2;
+  --accent-tint: #252d40;
+  --callout: #1f2622;
+  --callout-rule: #8fa595;
+  --breaks: #29241c;
+  --breaks-rule: #c9a46a;
+  --ok: #9fd3aa;
+  --ok-tint: #1d2b21;
+  --bad: #f2a596;
+  --bad-tint: #33201d;
+  --flag: #e3c47e;
+  --flag-tint: #2c2617;
+  --s1: #5a82dc;
+  --s2: #d9702f;
+  --s3: #23a582;
+}

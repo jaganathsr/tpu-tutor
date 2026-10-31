@@ -28,6 +28,7 @@ class Chip:
     flops_fp8: float | None = None
     flops_int8: float | None = None
     flops_fp4: float | None = None
+    flops_int4: float | None = None
     ici_link_bidi: float | None = None   # per link, both directions
     ici_links: int | None = None
     vmem_bytes: float | None = None      # per chip
@@ -42,21 +43,21 @@ class Chip:
 
 CHIPS = {
     "v5e": Chip(
-        "TPU v5e", flops_bf16=197e12, flops_int8=394e12, hbm_bw=819e9, hbm_bytes=16 * GB,
+        "TPU v5e", flops_bf16=197e12, flops_int8=394e12, flops_int4=788e12, hbm_bw=819e9, hbm_bytes=16 * GB,
         ici_link_bidi=100e9, ici_links=4, vmem_bytes=128 * 2**20, tensorcores=1,
-        src={"flops": "D-v5e", "hbm": "D-v5e (800 GiBps = 859 GB/s; SB1 and J-hw use 8.2e11)",
+        src={"flops": "D-v5e (int4: J-hw)", "hbm": "819 GB/s: J-hw/SB1 (8.2e11); D-v5e prints '800 GiBps', see DECISIONS",
              "ici": "D-v5e 400 GB/s bidi over 4 ports", "vmem": "J-hw"},
     ),
     "v5p": Chip(
-        "TPU v5p", flops_bf16=459e12, flops_int8=918e12, hbm_bw=2765e9, hbm_bytes=95 * GiB,
+        "TPU v5p", flops_bf16=459e12, flops_fp8=459e12, flops_int8=918e12, flops_int4=1840e12, hbm_bw=2765e9, hbm_bytes=95 * GiB,
         ici_link_bidi=200e9, ici_links=6, vmem_bytes=2 * 64 * 2**20, tensorcores=2,
-        src={"flops": "D-v5p (int8: SB2, J-hw)", "hbm": "D-v5p", "ici": "D-v5p 1200 GB/s bidi / 6",
+        src={"flops": "D-v5p (fp8 listed equal to bf16; int8: SB2, J-hw; int4: J-hw)", "hbm": "D-v5p", "ici": "D-v5p 1200 GB/s bidi / 6",
              "vmem": "J-hw"},
     ),
     "v6e": Chip(
-        "TPU v6e", flops_bf16=918e12, flops_int8=1836e12, hbm_bw=1638e9, hbm_bytes=32 * GB,
+        "TPU v6e", flops_bf16=918e12, flops_fp8=920e12, flops_int8=1836e12, flops_int4=3680e12, hbm_bw=1638e9, hbm_bytes=32 * GB,
         ici_link_bidi=200e9, ici_links=4, vmem_bytes=128 * 2**20, tensorcores=1,
-        src={"flops": "D-v6e", "hbm": "D-v6e", "ici": "D-v6e 800 GB/s bidi / 4", "vmem": "J-hw"},
+        src={"flops": "D-v6e (fp8, int4: J-hw; fp8 equals bf16)", "hbm": "D-v6e", "ici": "D-v6e 800 GB/s bidi / 4", "vmem": "J-hw"},
     ),
     "7x": Chip(
         "TPU7x Ironwood", flops_bf16=2307e12, flops_fp8=4614e12, hbm_bw=7380e9, hbm_bytes=192 * GiB,
@@ -64,11 +65,11 @@ CHIPS = {
         src={"flops": "D-7x", "hbm": "D-7x", "ici": "D-7x 6 x 200 GB/s bidi", "vmem": "J-hw, SB2"},
     ),
     "8t": Chip(
-        "TPU 8t", flops_bf16=996e12, flops_fp8=5977e12, flops_fp4=12.6e15, hbm_bw=6528e9,
+        "TPU 8t", flops_bf16=996e12, flops_fp8=5977e12, flops_int8=996e12, flops_int4=11954e12, flops_fp4=12.6e15, hbm_bw=6528e9,
         hbm_bytes=216 * GiB, ici_link_bidi=400e9, ici_links=6, vmem_bytes=128 * 2**20, tensorcores=1,
-        src={"fp4": "G-8dd", "bf16/fp8": "J-hw (provisional)", "hbm": "G-8dd",
+        src={"fp4": "G-8dd", "bf16/fp8/int8/int4": "J-hw (provisional)", "hbm": "G-8dd",
              "ici": "G-8 '2x Ironwood' -> derived 400 GB/s bidi/link", "vmem": "G-8dd, J-hw"},
-        provisional=("flops_bf16", "flops_fp8", "ici_link_bidi"),
+        provisional=("flops_bf16", "flops_fp8", "flops_int8", "flops_int4", "ici_link_bidi"),
     ),
     "8i": Chip(
         "TPU 8i", flops_bf16=2 * 550e12, flops_fp8=2 * 4404e12, flops_fp4=10.1e15, hbm_bw=8601e9,
@@ -100,7 +101,29 @@ def fmt(x, nd=0):
     return "n/a" if x is None else f"{x:,.{nd}f}"
 
 
+def export_json(path="src/generated/chips.json"):
+    """Write the chip table for the in-browser interactives."""
+    import json
+    import os
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    out = {}
+    for k, c in CHIPS.items():
+        out[k] = {
+            "name": c.name,
+            "flops": {"bf16": c.flops_bf16, "fp8": c.flops_fp8, "int8": c.flops_int8, "fp4": c.flops_fp4, "int4": c.flops_int4},
+            "hbm_bw": c.hbm_bw, "hbm_bytes": c.hbm_bytes, "W_axis": c.W_axis,
+            "vmem_bytes": c.vmem_bytes, "tensorcores": c.tensorcores,
+            "src": c.src, "provisional": list(c.provisional),
+        }
+    with open(path, "w") as f:
+        json.dump(out, f, indent=1)
+    print(f"wrote {path}")
+
+
 if __name__ == "__main__":
+    import sys
+    if "--json" in sys.argv:
+        export_json()
     print(f"{'chip':16} {'bf16 HBM AI':>11} {'fp8 HBM AI':>10} {'B_crit int8w/bf16':>17} {'C/W_ici bf16':>12}  provisional")
     for k, c in CHIPS.items():
         ai = hbm_intensity(c, c.flops_bf16)

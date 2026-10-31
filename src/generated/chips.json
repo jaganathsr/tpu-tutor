@@ -1,0 +1,182 @@
+{
+ "v5e": {
+  "name": "TPU v5e",
+  "flops": {
+   "bf16": 197000000000000.0,
+   "fp8": null,
+   "int8": 394000000000000.0,
+   "fp4": null,
+   "int4": 788000000000000.0
+  },
+  "hbm_bw": 819000000000.0,
+  "hbm_bytes": 16000000000.0,
+  "W_axis": 100000000000.0,
+  "vmem_bytes": 134217728,
+  "tensorcores": 1,
+  "src": {
+   "flops": "D-v5e (int4: J-hw)",
+   "hbm": "819 GB/s: J-hw/SB1 (8.2e11); D-v5e prints '800 GiBps', see DECISIONS",
+   "ici": "D-v5e 400 GB/s bidi over 4 ports",
+   "vmem": "J-hw"
+  },
+  "provisional": []
+ },
+ "v5p": {
+  "name": "TPU v5p",
+  "flops": {
+   "bf16": 459000000000000.0,
+   "fp8": 459000000000000.0,
+   "int8": 918000000000000.0,
+   "fp4": null,
+   "int4": 1840000000000000.0
+  },
+  "hbm_bw": 2765000000000.0,
+  "hbm_bytes": 102005473280,
+  "W_axis": 200000000000.0,
+  "vmem_bytes": 134217728,
+  "tensorcores": 2,
+  "src": {
+   "flops": "D-v5p (fp8 listed equal to bf16; int8: SB2, J-hw; int4: J-hw)",
+   "hbm": "D-v5p",
+   "ici": "D-v5p 1200 GB/s bidi / 6",
+   "vmem": "J-hw"
+  },
+  "provisional": []
+ },
+ "v6e": {
+  "name": "TPU v6e",
+  "flops": {
+   "bf16": 918000000000000.0,
+   "fp8": 920000000000000.0,
+   "int8": 1836000000000000.0,
+   "fp4": null,
+   "int4": 3680000000000000.0
+  },
+  "hbm_bw": 1638000000000.0,
+  "hbm_bytes": 32000000000.0,
+  "W_axis": 200000000000.0,
+  "vmem_bytes": 134217728,
+  "tensorcores": 1,
+  "src": {
+   "flops": "D-v6e (fp8, int4: J-hw; fp8 equals bf16)",
+   "hbm": "D-v6e",
+   "ici": "D-v6e 800 GB/s bidi / 4",
+   "vmem": "J-hw"
+  },
+  "provisional": []
+ },
+ "7x": {
+  "name": "TPU7x Ironwood",
+  "flops": {
+   "bf16": 2307000000000000.0,
+   "fp8": 4614000000000000.0,
+   "int8": null,
+   "fp4": null,
+   "int4": null
+  },
+  "hbm_bw": 7380000000000.0,
+  "hbm_bytes": 206158430208,
+  "W_axis": 200000000000.0,
+  "vmem_bytes": 134217728,
+  "tensorcores": 2,
+  "src": {
+   "flops": "D-7x",
+   "hbm": "D-7x",
+   "ici": "D-7x 6 x 200 GB/s bidi",
+   "vmem": "J-hw, SB2"
+  },
+  "provisional": []
+ },
+ "8t": {
+  "name": "TPU 8t",
+  "flops": {
+   "bf16": 996000000000000.0,
+   "fp8": 5977000000000000.0,
+   "int8": 996000000000000.0,
+   "fp4": 1.26e+16,
+   "int4": 1.1954e+16
+  },
+  "hbm_bw": 6528000000000.0,
+  "hbm_bytes": 231928233984,
+  "W_axis": 400000000000.0,
+  "vmem_bytes": 134217728,
+  "tensorcores": 1,
+  "src": {
+   "fp4": "G-8dd",
+   "bf16/fp8/int8/int4": "J-hw (provisional)",
+   "hbm": "G-8dd",
+   "ici": "G-8 '2x Ironwood' -> derived 400 GB/s bidi/link",
+   "vmem": "G-8dd, J-hw"
+  },
+  "provisional": [
+   "flops_bf16",
+   "flops_fp8",
+   "flops_int8",
+   "flops_int4",
+   "ici_link_bidi"
+  ]
+ },
+ "8i": {
+  "name": "TPU 8i",
+  "flops": {
+   "bf16": 1100000000000000.0,
+   "fp8": 8808000000000000.0,
+   "int8": null,
+   "fp4": 1.01e+16,
+   "int4": null
+  },
+  "hbm_bw": 8601000000000.0,
+  "hbm_bytes": 309237645312,
+  "W_axis": null,
+  "vmem_bytes": 402653184,
+  "tensorcores": 2,
+  "src": {
+   "fp4": "G-8dd",
+   "bf16/fp8": "J-hw (provisional)",
+   "hbm": "G-8dd",
+   "ici": "G-8: 19.2 Tb/s per chip; Boardfly, per-link split not published"
+  },
+  "provisional": [
+   "flops_bf16",
+   "flops_fp8"
+  ]
+ },
+ "H100": {
+  "name": "H100 SXM",
+  "flops": {
+   "bf16": 989000000000000.0,
+   "fp8": 1979000000000000.0,
+   "int8": null,
+   "fp4": null,
+   "int4": null
+  },
+  "hbm_bw": 3350000000000.0,
+  "hbm_bytes": 80000000000.0,
+  "W_axis": null,
+  "vmem_bytes": null,
+  "tensorcores": null,
+  "src": {
+   "all": "N-h100 (dense = sparse/2)"
+  },
+  "provisional": []
+ },
+ "B200": {
+  "name": "B200",
+  "flops": {
+   "bf16": 2250000000000000.0,
+   "fp8": 4500000000000000.0,
+   "int8": null,
+   "fp4": null,
+   "int4": null
+  },
+  "hbm_bw": 8000000000000.0,
+  "hbm_bytes": 180000000000.0,
+  "W_axis": null,
+  "vmem_bytes": null,
+  "tensorcores": null,
+  "src": {
+   "all": "N-b200 (derived per GPU)"
+  },
+  "provisional": []
+ }
+}

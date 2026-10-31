@@ -1,0 +1,33 @@
+# Chapter 1 flashcards (draft: 8 of the planned 15-25).
+- id: ch01-c-ridge
+  front: What is a chip's ridge point, and what is it for Ironwood in BF16?
+  back: "Peak FLOP/s divided by HBM bytes/s. Ironwood: $2.307\\times10^{15} / 7.38\\times10^{12} \\approx 313$ FLOP/B."
+  source: D-7x
+- id: ch01-c-matmul-ai
+  front: "Arithmetic intensity of a bf16 matmul $X[B,D] \\cdot W[D,F]$ when $B \\ll D, F$?"
+  back: "About $B$, the token batch. Weight bytes dominate, and each weight byte is used once per token."
+  source: SB1 #matrix-multiplication
+- id: ch01-c-v5e
+  front: Compute-bound token batch for a bf16 matmul on TPU v5e?
+  back: About 240 (197 TFLOP/s over 820 GB/s).
+  source: SB1
+- id: ch01-c-h100
+  front: Compute-bound token batch for a bf16 matmul on an H100 SXM?
+  back: About 295 (989 dense TFLOP/s over 3.35 TB/s).
+  source: SB1 Q5
+- id: ch01-c-int8w
+  front: Effect of int8 weights with bf16 math on the compute-bound batch?
+  back: "Halves it: $\\beta = 1/2$ bytes ratio, so 240 becomes 120 on v5e and 313 becomes 156 on Ironwood."
+  source: SB7
+- id: ch01-c-fp8math
+  front: Effect of moving the math to fp8 as well as the weights, on Ironwood?
+  back: "Peak doubles to 4,614 TFLOP/s, the ridge doubles to 625, and the compute-bound batch returns to the bf16 value. The step still speeds up because bytes halved."
+  source: D-7x
+- id: ch01-c-tokens
+  front: Does the 240-token rule count sequences or tokens, and does model sharding change it?
+  back: Tokens, per replica. Model sharding divides FLOPs and bandwidth by the same factor, so it does not change it.
+  source: SB1
+- id: ch01-c-bounds
+  front: "Lower and upper bounds on kernel time from $T_\\text{math}$ and $T_\\text{comms}$?"
+  back: "Lower: $\\max(T_\\text{math}, T_\\text{comms})$, with perfect overlap. Upper: their sum, with none. They differ by at most 2×."
+  source: SB1 #where-does-the-time-go

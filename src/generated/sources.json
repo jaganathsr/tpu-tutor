@@ -1,0 +1,1024 @@
+{
+ "SB0": {
+  "id": "SB0",
+  "title": "Introduction",
+  "full": "Introduction",
+  "url": "https://jax-ml.github.io/scaling-book/",
+  "section": ". Spine: the Scaling Book"
+ },
+ "SB1": {
+  "id": "SB1",
+  "title": "All About Rooflines",
+  "full": "All About Rooflines",
+  "url": "https://jax-ml.github.io/scaling-book/roofline/",
+  "section": ". Spine: the Scaling Book"
+ },
+ "SB2": {
+  "id": "SB2",
+  "title": "How to Think About TPUs",
+  "full": "How to Think About TPUs",
+  "url": "https://jax-ml.github.io/scaling-book/tpus/",
+  "section": ". Spine: the Scaling Book"
+ },
+ "SB3": {
+  "id": "SB3",
+  "title": "Sharded Matrices and How to Multiply Them",
+  "full": "Sharded Matrices and How to Multiply Them",
+  "url": "https://jax-ml.github.io/scaling-book/sharding/",
+  "section": ". Spine: the Scaling Book"
+ },
+ "SB4": {
+  "id": "SB4",
+  "title": "All the Transformer Math You Need to Know",
+  "full": "All the Transformer Math You Need to Know",
+  "url": "https://jax-ml.github.io/scaling-book/transformers/",
+  "section": ". Spine: the Scaling Book"
+ },
+ "SB5": {
+  "id": "SB5",
+  "title": "How to Parallelize a Transformer for Training",
+  "full": "How to Parallelize a Transformer for Training",
+  "url": "https://jax-ml.github.io/scaling-book/training/",
+  "section": ". Spine: the Scaling Book"
+ },
+ "SB6": {
+  "id": "SB6",
+  "title": "Training LLaMA 3 on TPUs",
+  "full": "Training LLaMA 3 on TPUs",
+  "url": "https://jax-ml.github.io/scaling-book/applied-training/",
+  "section": ". Spine: the Scaling Book"
+ },
+ "SB7": {
+  "id": "SB7",
+  "title": "All About Transformer Inference",
+  "full": "All About Transformer Inference",
+  "url": "https://jax-ml.github.io/scaling-book/inference/",
+  "section": ". Spine: the Scaling Book"
+ },
+ "SB8": {
+  "id": "SB8",
+  "title": "Serving LLaMA 3-70B on TPUs",
+  "full": "Serving LLaMA 3-70B on TPUs",
+  "url": "https://jax-ml.github.io/scaling-book/applied-inference/",
+  "section": ". Spine: the Scaling Book"
+ },
+ "SB9": {
+  "id": "SB9",
+  "title": "How to Profile TPU Programs",
+  "full": "How to Profile TPU Programs",
+  "url": "https://jax-ml.github.io/scaling-book/profiling/",
+  "section": ". Spine: the Scaling Book"
+ },
+ "SB10": {
+  "id": "SB10",
+  "title": "Programming TPUs in JAX",
+  "full": "Programming TPUs in JAX",
+  "url": "https://jax-ml.github.io/scaling-book/jax-stuff/",
+  "section": ". Spine: the Scaling Book"
+ },
+ "SB11": {
+  "id": "SB11",
+  "title": "Conclusions and Further Reading",
+  "full": "Conclusions and Further Reading",
+  "url": "https://jax-ml.github.io/scaling-book/conclusion/",
+  "section": ". Spine: the Scaling Book"
+ },
+ "SB12": {
+  "id": "SB12",
+  "title": "How to Think About GPUs",
+  "full": "How to Think About GPUs",
+  "url": "https://jax-ml.github.io/scaling-book/gpus/",
+  "section": ". Spine: the Scaling Book"
+ },
+ "P-v1": {
+  "id": "P-v1",
+  "title": "Jouppi et al., \"In-Datacenter Performance Analysis of a Tensor Processing Unit\"",
+  "full": "Jouppi et al., \"In-Datacenter Performance Analysis of a Tensor Processing Unit,\" ISCA 2017",
+  "url": "https://arxiv.org/abs/1704.04760",
+  "section": "Papers"
+ },
+ "P-v23": {
+  "id": "P-v23",
+  "title": "Jouppi et al., \"A Domain-Specific Supercomputer for Training Deep Neural Networks\"",
+  "full": "Jouppi et al., \"A Domain-Specific Supercomputer for Training Deep Neural Networks,\" CACM 63(7), 2020",
+  "url": "https://doi.org/10.1145/3360307",
+  "section": "Papers"
+ },
+ "P-Norrie": {
+  "id": "P-Norrie",
+  "title": "Norrie et al., \"The Design Process for Google's Training Chips: TPUv2 and TPUv3\"",
+  "full": "Norrie et al., \"The Design Process for Google's Training Chips: TPUv2 and TPUv3,\" IEEE Micro 41(2), 2021",
+  "url": "https://ieeexplore.ieee.org/document/9351692/",
+  "section": "Papers"
+ },
+ "P-v4i": {
+  "id": "P-v4i",
+  "title": "Jouppi et al., \"Ten Lessons From Three Generations Shaped Google's TPUv4i\"",
+  "full": "Jouppi et al., \"Ten Lessons From Three Generations Shaped Google's TPUv4i,\" ISCA 2021",
+  "url": "https://www.cs.cmu.edu/~18742/papers/Jouppi2021.pdf",
+  "section": "Papers"
+ },
+ "P-v4": {
+  "id": "P-v4",
+  "title": "Jouppi et al., \"TPU v4: An Optically Reconfigurable Supercomputer for Machine Learning with Hardware Support for Embeddings\"",
+  "full": "Jouppi et al., \"TPU v4: An Optically Reconfigurable Supercomputer for Machine Learning with Hardware Support for Embeddings,\" ISCA 2023",
+  "url": "https://arxiv.org/abs/2304.01433",
+  "section": "Papers"
+ },
+ "P-Micro26": {
+  "id": "P-Micro26",
+  "title": "Jouppi, Patterson, Lakshmanamurthy, Young, \"Google's Training Supercomputers from TPU v2 to Ironwood…\"",
+  "full": "Jouppi, Patterson, Lakshmanamurthy, Young, \"Google's Training Supercomputers from TPU v2 to Ironwood…,\" IEEE Micro 2026",
+  "url": "https://research.google/pubs/googles-training-supercomputers-from-tpu-v2-to-ironwood-architectural-stability-scale-resilience-power-efficiency-and-sustainability-across-five-generation/",
+  "section": "Papers"
+ },
+ "P-Lightwave": {
+  "id": "P-Lightwave",
+  "title": "Liu et al., \"Lightwave Fabrics: At-Scale Optical Circuit Switching for Datacenter and ML Systems\"",
+  "full": "Liu et al., \"Lightwave Fabrics: At-Scale Optical Circuit Switching for Datacenter and ML Systems,\" SIGCOMM 2023",
+  "url": "https://doi.org/10.1145/3603269.3604836",
+  "section": "Papers"
+ },
+ "P-Apollo": {
+  "id": "P-Apollo",
+  "title": "Poutievski et al., \"Mission Apollo: Landing Optical Circuit Switching at Datacenter Scale\"",
+  "full": "Poutievski et al., \"Mission Apollo: Landing Optical Circuit Switching at Datacenter Scale,\" arXiv 2208.10041",
+  "url": "https://arxiv.org/abs/2208.10041",
+  "section": "Papers"
+ },
+ "P-Resil": {
+  "id": "P-Resil",
+  "title": "Zu et al., \"Resiliency at Scale: Managing Google's TPUv4 Machine Learning Supercomputer\"",
+  "full": "Zu et al., \"Resiliency at Scale: Managing Google's TPUv4 Machine Learning Supercomputer,\" NSDI 2024",
+  "url": "https://www.usenix.org/conference/nsdi24/presentation/zu",
+  "section": "Papers"
+ },
+ "HC-v23": {
+  "id": "HC-v23",
+  "title": "Norrie & Patil, \"Google's Training Chips Revealed: TPUv2 and TPUv3\"",
+  "full": "Norrie & Patil, \"Google's Training Chips Revealed: TPUv2 and TPUv3,\" Hot Chips 32 (2020)",
+  "url": "https://hc32.hotchips.org/assets/program/conference/day2/HotChips2020_ML_Training_Google_Norrie_Patil.v01.pdf",
+  "section": "Hot Chips"
+ },
+ "HC-v4": {
+  "id": "HC-v4",
+  "title": "Jouppi & Swing, TPU v4, Hot Chips 2023",
+  "full": "Jouppi & Swing, TPU v4, Hot Chips 2023",
+  "url": "https://hc2023.hotchips.org/assets/program/conference/day2/ML%20training/HC2023.Session5.ML_Training.Google.Norm_Jouppi.Andy_Swing.Final_2023-08-25.pdf",
+  "section": "Hot Chips"
+ },
+ "HC-7x": {
+  "id": "HC-7x",
+  "title": "Ironwood at Hot Chips 2025, as reported by ServeTheHome",
+  "full": "Ironwood at Hot Chips 2025, as reported by ServeTheHome (2025-08-26); no official slide PDF found",
+  "url": "https://www.servethehome.com/google-ironwood-tpu-swings-for-reasoning-model-leadership-at-hot-chips-2025/",
+  "section": "Hot Chips"
+ },
+ "D-arch": {
+  "id": "D-arch",
+  "title": "System architecture",
+  "full": "System architecture (TensorCore, MXU size per gen, slices, cubes, OCS, twisted torus)",
+  "url": "https://docs.cloud.google.com/tpu/docs/system-architecture-tpu-vm",
+  "section": "Google Cloud TPU documentation"
+ },
+ "D-v2": {
+  "id": "D-v2",
+  "title": "TPU v2",
+  "full": "TPU v2",
+  "url": "https://docs.cloud.google.com/tpu/docs/v2",
+  "section": "Google Cloud TPU documentation"
+ },
+ "D-v3": {
+  "id": "D-v3",
+  "title": "TPU v3",
+  "full": "TPU v3",
+  "url": "https://docs.cloud.google.com/tpu/docs/v3",
+  "section": "Google Cloud TPU documentation"
+ },
+ "D-v4": {
+  "id": "D-v4",
+  "title": "TPU v4",
+  "full": "TPU v4 (incl. twisted-torus bisection gains)",
+  "url": "https://docs.cloud.google.com/tpu/docs/v4",
+  "section": "Google Cloud TPU documentation"
+ },
+ "D-v5e": {
+  "id": "D-v5e",
+  "title": "TPU v5e",
+  "full": "TPU v5e",
+  "url": "https://docs.cloud.google.com/tpu/docs/v5e",
+  "section": "Google Cloud TPU documentation"
+ },
+ "D-v5p": {
+  "id": "D-v5p",
+  "title": "TPU v5p",
+  "full": "TPU v5p",
+  "url": "https://docs.cloud.google.com/tpu/docs/v5p",
+  "section": "Google Cloud TPU documentation"
+ },
+ "D-v6e": {
+  "id": "D-v6e",
+  "title": "TPU v6e",
+  "full": "TPU v6e (Trillium)",
+  "url": "https://docs.cloud.google.com/tpu/docs/v6e",
+  "section": "Google Cloud TPU documentation"
+ },
+ "D-7x": {
+  "id": "D-7x",
+  "title": "TPU7x (Ironwood)",
+  "full": "TPU7x (Ironwood): 2 chiplets, JAX sees 2 devices/chip, 6 × 200 GB/s ICI",
+  "url": "https://docs.cloud.google.com/tpu/docs/tpu7x",
+  "section": "Google Cloud TPU documentation"
+ },
+ "D-rn": {
+  "id": "D-rn",
+  "title": "Release notes",
+  "full": "Release notes (v6e GA 2024-12-16; TPU7x Preview 2025-11-24, GA 2026-03-31; no TPU 8 entries as of access)",
+  "url": "https://docs.cloud.google.com/tpu/docs/release-notes",
+  "section": "Google Cloud TPU documentation"
+ },
+ "D-pytorch": {
+  "id": "D-pytorch",
+  "title": "PyTorch on TPU",
+  "full": "PyTorch on TPU (\"TorchTPU replaces PyTorch/XLA\")",
+  "url": "https://docs.cloud.google.com/tpu/docs/pytorch-on-tpu",
+  "section": "Google Cloud TPU documentation"
+ },
+ "D-gke7x": {
+  "id": "D-gke7x",
+  "title": "GKE Ironwood concepts",
+  "full": "GKE Ironwood concepts",
+  "url": "https://docs.cloud.google.com/kubernetes-engine/docs/concepts/tpu-ironwood",
+  "section": "Google Cloud TPU documentation"
+ },
+ "G-v5e": {
+  "id": "G-v5e",
+  "title": "Announcing Cloud TPU v5e",
+  "full": "Announcing Cloud TPU v5e",
+  "url": "https://cloud.google.com/blog/products/compute/announcing-cloud-tpu-v5e-and-a3-gpus-in-ga",
+  "section": "Google launch posts"
+ },
+ "G-v5p": {
+  "id": "G-v5p",
+  "title": "Introducing Cloud TPU v5p and AI Hypercomputer",
+  "full": "Introducing Cloud TPU v5p and AI Hypercomputer",
+  "url": "https://cloud.google.com/blog/products/ai-machine-learning/introducing-cloud-tpu-v5p-and-ai-hypercomputer",
+  "section": "Google launch posts"
+ },
+ "G-v6e": {
+  "id": "G-v6e",
+  "title": "Introducing Trillium, 6th-gen TPUs",
+  "full": "Introducing Trillium, 6th-gen TPUs",
+  "url": "https://cloud.google.com/blog/products/compute/introducing-trillium-6th-gen-tpus",
+  "section": "Google launch posts"
+ },
+ "G-v6e-ga": {
+  "id": "G-v6e-ga",
+  "title": "Trillium is GA",
+  "full": "Trillium is GA",
+  "url": "https://cloud.google.com/blog/products/compute/trillium-tpu-is-ga",
+  "section": "Google launch posts"
+ },
+ "G-7x": {
+  "id": "G-7x",
+  "title": "Ironwood: the first Google TPU for the age of inference",
+  "full": "Ironwood: the first Google TPU for the age of inference",
+  "url": "https://blog.google/products/google-cloud/ironwood-tpu-age-of-inference/",
+  "section": "Google launch posts"
+ },
+ "G-7x-ga": {
+  "id": "G-7x-ga",
+  "title": "Ironwood TPUs and new Axion-based VMs",
+  "full": "Ironwood TPUs and new Axion-based VMs",
+  "url": "https://cloud.google.com/blog/products/compute/ironwood-tpus-and-new-axion-based-vms-for-your-ai-workloads",
+  "section": "Google launch posts"
+ },
+ "G-8": {
+  "id": "G-8",
+  "title": "Vahdat, \"Our eighth generation TPUs: two chips for the agentic era\"",
+  "full": "Vahdat, \"Our eighth generation TPUs: two chips for the agentic era\"",
+  "url": "https://blog.google/innovation-and-ai/infrastructure-and-cloud/google-cloud/eighth-generation-tpu-agentic-era/",
+  "section": "Google launch posts"
+ },
+ "G-8dd": {
+  "id": "G-8dd",
+  "title": "Gupta & Mugazambi, \"TPU 8t and TPU 8i technical deep dive\"",
+  "full": "Gupta & Mugazambi, \"TPU 8t and TPU 8i technical deep dive\" (only official TPU 8 spec table)",
+  "url": "https://cloud.google.com/blog/products/compute/tpu-8t-and-tpu-8i-technical-deep-dive",
+  "section": "Google launch posts"
+ },
+ "J-hw": {
+  "id": "J-hw",
+  "title": "Pallas \"TPU Hardware Reference\"",
+  "full": "Pallas \"TPU Hardware Reference.\" Per-TensorCore VMEM, CMEM, SMEM, HBM, HBM BW, BF16/FP8/INT8/INT4 peaks and SparseCore config, generated in-page from `pltpu.get_tpu_info_for_chip`. The only public source with BF16 and FP8 peaks for TPU 8t and 8i",
+  "url": "https://docs.jax.dev/en/latest/pallas/tpu/hardware.html",
+  "section": "JAX/Pallas hardware table"
+ },
+ "HK": {
+  "id": "HK",
+  "title": "Henry Ko, \"TPU Deep Dive\"",
+  "full": "Henry Ko, \"TPU Deep Dive,\" 2025-06-18",
+  "url": "https://henryhmko.github.io/posts/tpu/tpu.html",
+  "section": "Secondary hardware material"
+ },
+ "S-TC": {
+  "id": "S-TC",
+  "title": "TechCrunch on TPU 8",
+  "full": "TechCrunch on TPU 8",
+  "url": "https://techcrunch.com/2026/04/22/google-cloud-next-new-tpu-ai-chips-compete-with-nvidia/",
+  "section": "Secondary hardware material"
+ },
+ "S-TNW": {
+  "id": "S-TNW",
+  "title": "TheNextWeb on TPU 8",
+  "full": "TheNextWeb on TPU 8 (2 nm, codenames, \"late 2027\")",
+  "url": "https://thenextweb.com/news/google-ironwood-tpu-inference-cloud-next",
+  "section": "Secondary hardware material"
+ },
+ "S-TH": {
+  "id": "S-TH",
+  "title": "Tom's Hardware on TPU 8",
+  "full": "Tom's Hardware on TPU 8 (N3)",
+  "url": "https://www.tomshardware.com/tech-industry/semiconductors/google-splits-its-tpu-into-two-chips-for-the-first-time-with-training-and-inference-variants",
+  "section": "Secondary hardware material"
+ },
+ "P-Pathways": {
+  "id": "P-Pathways",
+  "title": "Barham et al., \"Pathways: Asynchronous Distributed Dataflow for ML\"",
+  "full": "Barham et al., \"Pathways: Asynchronous Distributed Dataflow for ML,\" MLSys 2022",
+  "url": "https://arxiv.org/abs/2203.12533",
+  "section": "Papers"
+ },
+ "P-GSPMD": {
+  "id": "P-GSPMD",
+  "title": "Xu et al., \"GSPMD: General and Scalable Parallelization for ML Computation Graphs\"",
+  "full": "Xu et al., \"GSPMD: General and Scalable Parallelization for ML Computation Graphs,\" 2021",
+  "url": "https://arxiv.org/abs/2105.04663",
+  "section": "Papers"
+ },
+ "P-CollMM": {
+  "id": "P-CollMM",
+  "title": "Wang et al., \"Overlap Communication with Dependent Computation via Decomposition in Large Deep Learning Models\"",
+  "full": "Wang et al., \"Overlap Communication with Dependent Computation via Decomposition in Large Deep Learning Models,\" ASPLOS 2023, pp. 93–106",
+  "url": "https://doi.org/10.1145/3567955.3567959",
+  "section": "Papers"
+ },
+ "P-RPA": {
+  "id": "P-RPA",
+  "title": "Jiang, Chen, Hechtman, Zhang, Mu, \"Ragged Paged Attention\"",
+  "full": "Jiang, Chen, Hechtman, Zhang, Mu, \"Ragged Paged Attention,\" 2026-04-16",
+  "url": "https://arxiv.org/abs/2604.15464",
+  "section": "Papers"
+ },
+ "P-ESTI": {
+  "id": "P-ESTI",
+  "title": "Pope et al., \"Efficiently Scaling Transformer Inference\"",
+  "full": "Pope et al., \"Efficiently Scaling Transformer Inference,\" 2022 (basis of SB7)",
+  "url": "https://arxiv.org/abs/2211.05102",
+  "section": "Papers"
+ },
+ "X-arch": {
+  "id": "X-arch",
+  "title": "XLA architecture",
+  "full": "XLA architecture",
+  "url": "https://openxla.org/xla/architecture",
+  "section": "XLA / OpenXLA"
+ },
+ "X-ops": {
+  "id": "X-ops",
+  "title": "Operation semantics",
+  "full": "Operation semantics (HLO op reference)",
+  "url": "https://openxla.org/xla/operation_semantics",
+  "section": "XLA / OpenXLA"
+ },
+ "X-shapes": {
+  "id": "X-shapes",
+  "title": "Shapes and layout",
+  "full": "Shapes and layout",
+  "url": "https://openxla.org/xla/shapes",
+  "section": "XLA / OpenXLA"
+ },
+ "X-tiled": {
+  "id": "X-tiled",
+  "title": "Tiled layout",
+  "full": "Tiled layout (TPU (8,128) tiling, bf16 (2,1), int8 (4,1))",
+  "url": "https://openxla.org/xla/tiled_layout",
+  "section": "XLA / OpenXLA"
+ },
+ "X-passes": {
+  "id": "X-passes",
+  "title": "HLO passes",
+  "full": "HLO passes",
+  "url": "https://openxla.org/xla/hlo_passes",
+  "section": "XLA / OpenXLA"
+ },
+ "X-dumps": {
+  "id": "X-dumps",
+  "title": "HLO dumps",
+  "full": "HLO dumps",
+  "url": "https://openxla.org/xla/hlo_dumps",
+  "section": "XLA / OpenXLA"
+ },
+ "X-async": {
+  "id": "X-async",
+  "title": "Async HLO ops",
+  "full": "Async HLO ops (`-start`/`-done`)",
+  "url": "https://openxla.org/xla/async_ops",
+  "section": "XLA / OpenXLA"
+ },
+ "X-flags": {
+  "id": "X-flags",
+  "title": "Flags guidance",
+  "full": "Flags guidance (TPU scheduler, async collectives, windowed einsum, VMEM)",
+  "url": "https://openxla.org/xla/flags_guidance",
+  "section": "XLA / OpenXLA"
+ },
+ "X-shardy": {
+  "id": "X-shardy",
+  "title": "Shardy (default partitioner since JAX 0.7.0)",
+  "full": "Shardy (default partitioner since JAX 0.7.0)",
+  "url": "https://openxla.org/shardy",
+  "section": "XLA / OpenXLA"
+ },
+ "X-shardy-jax": {
+  "id": "X-shardy-jax",
+  "title": "Using Shardy from JAX",
+  "full": "Using Shardy from JAX",
+  "url": "https://openxla.org/shardy/getting_started_jax",
+  "section": "XLA / OpenXLA"
+ },
+ "X-shardy-prop": {
+  "id": "X-shardy-prop",
+  "title": "Shardy propagation",
+  "full": "Shardy propagation",
+  "url": "https://openxla.org/shardy/propagation",
+  "section": "XLA / OpenXLA"
+ },
+ "X-stablehlo": {
+  "id": "X-stablehlo",
+  "title": "StableHLO spec",
+  "full": "StableHLO spec",
+  "url": "https://openxla.org/stablehlo/spec",
+  "section": "XLA / OpenXLA"
+ },
+ "X-gpu": {
+  "id": "X-gpu",
+  "title": "XLA:GPU architecture",
+  "full": "XLA:GPU architecture (for the fusion comparison)",
+  "url": "https://openxla.org/xla/gpu_architecture",
+  "section": "XLA / OpenXLA"
+ },
+ "J-shard": {
+  "id": "J-shard",
+  "title": "Sharding guide",
+  "full": "Sharding guide (auto / explicit / manual)",
+  "url": "https://docs.jax.dev/en/latest/parallel.html",
+  "section": "JAX"
+ },
+ "J-sharding-api": {
+  "id": "J-sharding-api",
+  "title": "`jax.sharding` API",
+  "full": "`jax.sharding` API",
+  "url": "https://docs.jax.dev/en/latest/jax.sharding.html",
+  "section": "JAX"
+ },
+ "J-shmap": {
+  "id": "J-shmap",
+  "title": "`shard_map` tutorial",
+  "full": "`shard_map` tutorial",
+  "url": "https://docs.jax.dev/en/latest/notebooks/shard_map.html",
+  "section": "JAX"
+ },
+ "J-jaxpr": {
+  "id": "J-jaxpr",
+  "title": "jaxpr language",
+  "full": "jaxpr language",
+  "url": "https://docs.jax.dev/en/latest/jaxpr.html",
+  "section": "JAX"
+ },
+ "J-aot": {
+  "id": "J-aot",
+  "title": "Ahead-of-time lowering",
+  "full": "Ahead-of-time lowering",
+  "url": "https://docs.jax.dev/en/latest/aot.html",
+  "section": "JAX"
+ },
+ "J-prof": {
+  "id": "J-prof",
+  "title": "JAX profiling",
+  "full": "JAX profiling",
+  "url": "https://docs.jax.dev/en/latest/profiling.html",
+  "section": "JAX"
+ },
+ "J-log": {
+  "id": "J-log",
+  "title": "JAX changelog",
+  "full": "JAX changelog (Shardy default 0.7.0; `jax.shard_map` 0.8.0; C++ pmap removed 0.10.0; 0.12.0 on 2026-10-19)",
+  "url": "https://docs.jax.dev/en/latest/changelog.html",
+  "section": "JAX"
+ },
+ "PL-index": {
+  "id": "PL-index",
+  "title": "Pallas overview",
+  "full": "Pallas overview",
+  "url": "https://docs.jax.dev/en/latest/pallas/index.html",
+  "section": "Pallas / Mosaic"
+ },
+ "PL-grid": {
+  "id": "PL-grid",
+  "title": "Grids and BlockSpecs",
+  "full": "Grids and BlockSpecs",
+  "url": "https://docs.jax.dev/en/latest/pallas/grid_blockspec.html",
+  "section": "Pallas / Mosaic"
+ },
+ "PL-tpu": {
+  "id": "PL-tpu",
+  "title": "Writing TPU kernels",
+  "full": "Writing TPU kernels (memory spaces, (8,128) rule, sequential grid)",
+  "url": "https://docs.jax.dev/en/latest/pallas/tpu/details.html",
+  "section": "Pallas / Mosaic"
+ },
+ "PL-pipe": {
+  "id": "PL-pipe",
+  "title": "TPU pipelining",
+  "full": "TPU pipelining (double buffering, megacore `dimension_semantics`)",
+  "url": "https://docs.jax.dev/en/latest/pallas/tpu/pipelining.html",
+  "section": "Pallas / Mosaic"
+ },
+ "PL-mm": {
+  "id": "PL-mm",
+  "title": "TPU matmul tutorial",
+  "full": "TPU matmul tutorial",
+  "url": "https://docs.jax.dev/en/latest/pallas/tpu/matmul.html",
+  "section": "Pallas / Mosaic"
+ },
+ "PL-sparse": {
+  "id": "PL-sparse",
+  "title": "Scalar prefetch and block-sparse",
+  "full": "Scalar prefetch and block-sparse (basis of paged attention)",
+  "url": "https://docs.jax.dev/en/latest/pallas/tpu/sparse.html",
+  "section": "Pallas / Mosaic"
+ },
+ "PL-dist": {
+  "id": "PL-dist",
+  "title": "Distributed Pallas",
+  "full": "Distributed Pallas (remote DMA collectives)",
+  "url": "https://docs.jax.dev/en/latest/pallas/tpu/distributed.html",
+  "section": "Pallas / Mosaic"
+ },
+ "PL-core": {
+  "id": "PL-core",
+  "title": "Core-specific programming",
+  "full": "Core-specific programming (`pl.kernel`)",
+  "url": "https://docs.jax.dev/en/latest/pallas/tpu/core_map.html",
+  "section": "Pallas / Mosaic"
+ },
+ "PL-sc": {
+  "id": "PL-sc",
+  "title": "SparseCore kernels",
+  "full": "SparseCore kernels",
+  "url": "https://docs.jax.dev/en/latest/pallas/tpu/sparsecore.html",
+  "section": "Pallas / Mosaic"
+ },
+ "PL-log": {
+  "id": "PL-log",
+  "title": "Pallas changelog",
+  "full": "Pallas changelog",
+  "url": "https://docs.jax.dev/en/latest/pallas/CHANGELOG.html",
+  "section": "Pallas / Mosaic"
+ },
+ "PL-gpu": {
+  "id": "PL-gpu",
+  "title": "Pallas Mosaic GPU",
+  "full": "Pallas Mosaic GPU (for comparison)",
+  "url": "https://docs.jax.dev/en/latest/pallas/gpu/index.html",
+  "section": "Pallas / Mosaic"
+ },
+ "K-tokamax": {
+  "id": "K-tokamax",
+  "title": "Tokamax kernel library",
+  "full": "Tokamax kernel library",
+  "url": "https://github.com/openxla/tokamax",
+  "section": "Pallas / Mosaic"
+ },
+ "R-maxtext": {
+  "id": "R-maxtext",
+  "title": "MaxText repo",
+  "full": "MaxText repo",
+  "url": "https://github.com/AI-Hypercomputer/maxtext",
+  "section": "Reference implementations and serving"
+ },
+ "R-jetstream": {
+  "id": "R-jetstream",
+  "title": "JetStream",
+  "full": "JetStream",
+  "url": "https://github.com/AI-Hypercomputer/JetStream",
+  "section": "Reference implementations and serving"
+ },
+ "R-tpuinf": {
+  "id": "R-tpuinf",
+  "title": "tpu-inference (being renamed vLLM JAX)",
+  "full": "tpu-inference (being renamed vLLM JAX)",
+  "url": "https://github.com/vllm-project/tpu-inference",
+  "section": "Reference implementations and serving"
+ },
+ "R-tpuinf-docs": {
+  "id": "R-tpuinf-docs",
+  "title": "vLLM TPU docs",
+  "full": "vLLM TPU docs",
+  "url": "https://docs.vllm.ai/projects/tpu/en/latest/",
+  "section": "Reference implementations and serving"
+ },
+ "R-torchax-guide": {
+  "id": "R-torchax-guide",
+  "title": "tpu-inference torchax model development guide",
+  "full": "tpu-inference torchax model development guide",
+  "url": "https://github.com/vllm-project/tpu-inference/blob/main/docs/developers_guide/torchax_model_development.md",
+  "section": "Reference implementations and serving"
+ },
+ "R-tpuinf-prof": {
+  "id": "R-tpuinf-prof",
+  "title": "tpu-inference profiling guide",
+  "full": "tpu-inference profiling guide",
+  "url": "https://github.com/vllm-project/tpu-inference/blob/main/docs/developers_guide/profiling.md",
+  "section": "Reference implementations and serving"
+ },
+ "B-vllmtpu": {
+  "id": "B-vllmtpu",
+  "title": "\"vLLM TPU: A New Unified Backend Supporting PyTorch and JAX on TPU\"",
+  "full": "\"vLLM TPU: A New Unified Backend Supporting PyTorch and JAX on TPU,\" 2025-10-16",
+  "url": "https://vllm.ai/blog/vllm-tpu",
+  "section": "Reference implementations and serving"
+ },
+ "R-vllm-torchtpu": {
+  "id": "R-vllm-torchtpu",
+  "title": "vllm-torchtpu (\"recommended path for serving PyTorch model definitions on TPU\")",
+  "full": "vllm-torchtpu (\"recommended path for serving PyTorch model definitions on TPU\")",
+  "url": "https://github.com/vllm-project/vllm-torchtpu",
+  "section": "Reference implementations and serving"
+ },
+ "R-torchax": {
+  "id": "R-torchax",
+  "title": "torchax (moved here 2025-10-06)",
+  "full": "torchax (moved here 2025-10-06)",
+  "url": "https://github.com/google/torchax",
+  "section": "Reference implementations and serving"
+ },
+ "R-qwix": {
+  "id": "R-qwix",
+  "title": "Qwix",
+  "full": "Qwix",
+  "url": "https://github.com/google/qwix",
+  "section": "Reference implementations and serving"
+ },
+ "R-sglang-jax": {
+  "id": "R-sglang-jax",
+  "title": "SGLang JAX",
+  "full": "SGLang JAX",
+  "url": "https://github.com/sgl-project/sglang-jax",
+  "section": "Reference implementations and serving"
+ },
+ "T-blog1": {
+  "id": "T-blog1",
+  "title": "Google Developers Blog, \"TorchTPU: Running PyTorch Natively on TPUs at Google Scale\"",
+  "full": "Google Developers Blog, \"TorchTPU: Running PyTorch Natively on TPUs at Google Scale\"",
+  "url": "https://developers.googleblog.com/torchtpu-running-pytorch-natively-on-tpus-at-google-scale/",
+  "section": "TorchTPU and PyTorch/XLA"
+ },
+ "T-oss": {
+  "id": "T-oss",
+  "title": "Google Cloud Blog, \"TorchTPU is now open source\"",
+  "full": "Google Cloud Blog, \"TorchTPU is now open source\"",
+  "url": "https://cloud.google.com/blog/topics/ai-infrastructure/torchtpu-is-now-open-source-run-native-pytorch-on-tpus",
+  "section": "TorchTPU and PyTorch/XLA"
+ },
+ "T-pt": {
+  "id": "T-pt",
+  "title": "PyTorch blog, \"Introducing TorchTPU\"",
+  "full": "PyTorch blog, \"Introducing TorchTPU\"",
+  "url": "https://pytorch.org/blog/introducing-torchtpu/",
+  "section": "TorchTPU and PyTorch/XLA"
+ },
+ "T-repo": {
+  "id": "T-repo",
+  "title": "torch_tpu repo",
+  "full": "torch_tpu repo (0.2.0)",
+  "url": "https://github.com/google-pytorch/torch_tpu",
+  "section": "TorchTPU and PyTorch/XLA"
+ },
+ "T-how": {
+  "id": "T-how",
+  "title": "TorchTPU docs: How TorchTPU works",
+  "full": "Docs: How TorchTPU works",
+  "url": "https://torchtpu.readthedocs.io/en/0.2.0/how_torchtpu_works/",
+  "section": "TorchTPU and PyTorch/XLA"
+ },
+ "T-exec": {
+  "id": "T-exec",
+  "title": "TorchTPU docs: Execution model",
+  "full": "Docs: Execution model (strict / debug / defer-and-fuse eager; `torch.compile(backend=\"tpu\")`)",
+  "url": "https://torchtpu.readthedocs.io/en/0.2.0/torchtpu_execution_model/",
+  "section": "TorchTPU and PyTorch/XLA"
+ },
+ "T-dist": {
+  "id": "T-dist",
+  "title": "TorchTPU docs: Distributed support",
+  "full": "Docs: Distributed support (`tpu_dist`, SPMD handshake)",
+  "url": "https://torchtpu.readthedocs.io/en/0.2.0/distributed_support/",
+  "section": "TorchTPU and PyTorch/XLA"
+ },
+ "T-kern": {
+  "id": "T-kern",
+  "title": "TorchTPU docs: Custom kernels",
+  "full": "Docs: Custom kernels (`torch.tpu.pallas.jax_op`)",
+  "url": "https://torchtpu.readthedocs.io/en/0.2.0/custom_kernels/",
+  "section": "TorchTPU and PyTorch/XLA"
+ },
+ "T-engines": {
+  "id": "T-engines",
+  "title": "\"Announcing New vLLM and SGLang Inference Engines on TPU\"",
+  "full": "\"Announcing New vLLM and SGLang Inference Engines on TPU\"",
+  "url": "https://developers.googleblog.com/announcing-new-vllm-and-sglang-inference-engines-on-tpu/",
+  "section": "TorchTPU and PyTorch/XLA"
+ },
+ "T-xla": {
+  "id": "T-xla",
+  "title": "PyTorch/XLA repo",
+  "full": "PyTorch/XLA repo (\"deprecated and replaced by TorchTPU\"; archived 2026-11-15)",
+  "url": "https://github.com/pytorch/xla",
+  "section": "TorchTPU and PyTorch/XLA"
+ },
+ "XP-home": {
+  "id": "XP-home",
+  "title": "XProf",
+  "full": "XProf",
+  "url": "https://openxla.org/xprof",
+  "section": "XProf"
+ },
+ "XP-trace": {
+  "id": "XP-trace",
+  "title": "Trace Viewer",
+  "full": "Trace Viewer",
+  "url": "https://openxla.org/xprof/trace_viewer",
+  "section": "XProf"
+ },
+ "XP-opprof": {
+  "id": "XP-opprof",
+  "title": "HLO Op Profile",
+  "full": "HLO Op Profile",
+  "url": "https://openxla.org/xprof/hlo_op_profile",
+  "section": "XProf"
+ },
+ "XP-opstats": {
+  "id": "XP-opstats",
+  "title": "HLO Op Stats",
+  "full": "HLO Op Stats",
+  "url": "https://openxla.org/xprof/hlo_op_stats",
+  "section": "XProf"
+ },
+ "XP-mem": {
+  "id": "XP-mem",
+  "title": "Memory Viewer",
+  "full": "Memory Viewer",
+  "url": "https://openxla.org/xprof/memory_viewer",
+  "section": "XProf"
+ },
+ "XP-roof": {
+  "id": "XP-roof",
+  "title": "Roofline Model",
+  "full": "Roofline Model (HBM, VMEM, CMEM rooflines)",
+  "url": "https://openxla.org/xprof/roofline_model",
+  "section": "XProf"
+ },
+ "XP-graph": {
+  "id": "XP-graph",
+  "title": "Graph Viewer",
+  "full": "Graph Viewer",
+  "url": "https://openxla.org/xprof/graph_viewer",
+  "section": "XProf"
+ },
+ "XP-mega": {
+  "id": "XP-mega",
+  "title": "Megascale Viewer",
+  "full": "Megascale Viewer (multislice DCN)",
+  "url": "https://openxla.org/xprof/megascale_viewer",
+  "section": "XProf"
+ },
+ "XP-jax": {
+  "id": "XP-jax",
+  "title": "Profiling JAX programs",
+  "full": "Profiling JAX programs",
+  "url": "https://openxla.org/xprof/jax_profiling",
+  "section": "XProf"
+ },
+ "N-h100": {
+  "id": "N-h100",
+  "title": "H100 product page",
+  "full": "H100 product page",
+  "url": "https://www.nvidia.com/en-us/data-center/h100/",
+  "section": "NVIDIA"
+ },
+ "N-h200": {
+  "id": "N-h200",
+  "title": "H200 product page",
+  "full": "H200 product page",
+  "url": "https://www.nvidia.com/en-us/data-center/h200/",
+  "section": "NVIDIA"
+ },
+ "N-b200": {
+  "id": "N-b200",
+  "title": "DGX B200",
+  "full": "DGX B200",
+  "url": "https://www.nvidia.com/en-us/data-center/dgx-b200/",
+  "section": "NVIDIA"
+ },
+ "N-hgx": {
+  "id": "N-hgx",
+  "title": "HGX (B200, B300)",
+  "full": "HGX (B200, B300)",
+  "url": "https://www.nvidia.com/en-us/data-center/hgx/",
+  "section": "NVIDIA"
+ },
+ "N-gb200": {
+  "id": "N-gb200",
+  "title": "GB200 NVL72",
+  "full": "GB200 NVL72",
+  "url": "https://www.nvidia.com/en-us/data-center/gb200-nvl72/",
+  "section": "NVIDIA"
+ },
+ "N-gb300": {
+  "id": "N-gb300",
+  "title": "GB300 NVL72",
+  "full": "GB300 NVL72",
+  "url": "https://www.nvidia.com/en-us/data-center/gb300-nvl72/",
+  "section": "NVIDIA"
+ },
+ "N-rubin": {
+  "id": "N-rubin",
+  "title": "Vera Rubin NVL72",
+  "full": "Vera Rubin NVL72",
+  "url": "https://www.nvidia.com/en-us/data-center/vera-rubin-nvl72/",
+  "section": "NVIDIA"
+ },
+ "N-wp": {
+  "id": "N-wp",
+  "title": "H100 architecture whitepaper",
+  "full": "H100 architecture whitepaper (mirror; official copy is registration-gated)",
+  "url": "https://www.ece.lsu.edu/koppel/gp/refs/gtc22-whitepaper-hopper.pdf",
+  "section": "NVIDIA"
+ },
+ "N-tune": {
+  "id": "N-tune",
+  "title": "Hopper tuning guide",
+  "full": "Hopper tuning guide (228 KB SMEM/SM, 50 MB L2)",
+  "url": "https://docs.nvidia.com/cuda/hopper-tuning-guide/index.html",
+  "section": "NVIDIA"
+ },
+ "N-graphs": {
+  "id": "N-graphs",
+  "title": "CUDA Programming Guide §4.2, CUDA Graphs",
+  "full": "CUDA Programming Guide §4.2, CUDA Graphs",
+  "url": "https://docs.nvidia.com/cuda/cuda-programming-guide/04-special-topics/cuda-graphs.html",
+  "section": "NVIDIA"
+ },
+ "P-Megatron": {
+  "id": "P-Megatron",
+  "title": "Shoeybi et al., \"Megatron-LM\"",
+  "full": "Shoeybi et al., \"Megatron-LM,\" 2019",
+  "url": "https://arxiv.org/abs/1909.08053",
+  "section": "GPU parallelism and collectives literature"
+ },
+ "P-SeqPar": {
+  "id": "P-SeqPar",
+  "title": "Korthikanti et al., \"Reducing Activation Recomputation in Large Transformer Models\"",
+  "full": "Korthikanti et al., \"Reducing Activation Recomputation in Large Transformer Models,\" 2022",
+  "url": "https://arxiv.org/abs/2205.05198",
+  "section": "GPU parallelism and collectives literature"
+ },
+ "P-Flux": {
+  "id": "P-Flux",
+  "title": "Chang et al., \"FLUX: Fast Software-based Communication Overlap on GPUs\"",
+  "full": "Chang et al., \"FLUX: Fast Software-based Communication Overlap on GPUs,\" 2024",
+  "url": "https://arxiv.org/abs/2406.06858",
+  "section": "GPU parallelism and collectives literature"
+ },
+ "N-nccltests": {
+  "id": "N-nccltests",
+  "title": "NCCL-tests PERFORMANCE.md",
+  "full": "NCCL-tests PERFORMANCE.md (algbw vs busbw)",
+  "url": "https://github.com/NVIDIA/nccl-tests/blob/master/doc/PERFORMANCE.md",
+  "section": "GPU parallelism and collectives literature"
+ },
+ "N-ncclenv": {
+  "id": "N-ncclenv",
+  "title": "NCCL env docs",
+  "full": "NCCL env docs (NCCL_ALGO: Ring, Tree, NVLS, PAT…)",
+  "url": "https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/env.html",
+  "section": "GPU parallelism and collectives literature"
+ },
+ "N-nccl24": {
+  "id": "N-nccl24",
+  "title": "\"Massively Scale Your Deep Learning Training with NCCL 2.4\"",
+  "full": "\"Massively Scale Your Deep Learning Training with NCCL 2.4\" (double binary trees)",
+  "url": "https://developer.nvidia.com/blog/massively-scale-deep-learning-training-nccl-2-4",
+  "section": "GPU parallelism and collectives literature"
+ },
+ "PT-asynctp": {
+  "id": "PT-asynctp",
+  "title": "\"Introducing Async Tensor Parallelism in PyTorch\"",
+  "full": "\"Introducing Async Tensor Parallelism in PyTorch,\" 2024-09-12",
+  "url": "https://discuss.pytorch.org/t/distributed-w-torchtitan-introducing-async-tensor-parallelism-in-pytorch/209487",
+  "section": "GPU parallelism and collectives literature"
+ },
+ "N-teoverlap": {
+  "id": "N-teoverlap",
+  "title": "NeMo TP communication overlap",
+  "full": "NeMo TP communication overlap",
+  "url": "https://docs.nvidia.com/nemo-framework/user-guide/26.02/nemotoolkit/features/optimizations/communication_overlap.html",
+  "section": "GPU parallelism and collectives literature"
+ },
+ "A-trn2": {
+  "id": "A-trn2",
+  "title": "Trainium2 chip architecture",
+  "full": "Trainium2 chip architecture",
+  "url": "https://awsdocs-neuron.readthedocs-hosted.com/en/v2.32.0/_sources/about-neuron/arch/neuron-hardware/trainium2.rst",
+  "section": "AWS Trainium"
+ },
+ "A-trn2-nki": {
+  "id": "A-trn2-nki",
+  "title": "Trainium2 architecture guide for NKI",
+  "full": "Trainium2 architecture guide for NKI (NeuronCore-v3 engines, SBUF/PSUM)",
+  "url": "https://awsdocs-neuron.readthedocs-hosted.com/en/v2.32.0/_sources/nki/guides/architecture/trainium2_arch.rst",
+  "section": "AWS Trainium"
+ },
+ "A-trn2-sys": {
+  "id": "A-trn2-sys",
+  "title": "Trn2 instance and UltraServer architecture",
+  "full": "Trn2 instance and UltraServer architecture (4×4 2D torus)",
+  "url": "https://awsdocs-neuron.readthedocs-hosted.com/en/latest/_sources/about-neuron/arch/neuron-hardware/trn2-arch.rst",
+  "section": "AWS Trainium"
+ },
+ "A-trn3": {
+  "id": "A-trn3",
+  "title": "Trainium3 chip architecture",
+  "full": "Trainium3 chip architecture",
+  "url": "https://awsdocs-neuron.readthedocs-hosted.com/en/latest/general/arch/neuron-hardware/trainium3.html",
+  "section": "AWS Trainium"
+ },
+ "A-trn3-nki": {
+  "id": "A-trn3-nki",
+  "title": "Trainium3 architecture guide for NKI",
+  "full": "Trainium3 architecture guide for NKI",
+  "url": "https://awsdocs-neuron.readthedocs-hosted.com/en/v2.28.1/nki/guides/architecture/trainium3_arch.html",
+  "section": "AWS Trainium"
+ },
+ "A-trn3-sys": {
+  "id": "A-trn3-sys",
+  "title": "Trn3 UltraServer architecture",
+  "full": "Trn3 UltraServer architecture (NeuronSwitch, replaces 2D torus)",
+  "url": "https://awsdocs-neuron.readthedocs-hosted.com/en/latest/about-neuron/arch/neuron-hardware/trn3-arch.html",
+  "section": "AWS Trainium"
+ },
+ "A-trn3-prod": {
+  "id": "A-trn3-prod",
+  "title": "EC2 Trn3 product page",
+  "full": "EC2 Trn3 product page",
+  "url": "https://aws.amazon.com/ec2/instance-types/trn3/",
+  "section": "AWS Trainium"
+ },
+ "A-trn3-ga": {
+  "id": "A-trn3-ga",
+  "title": "Trn3 UltraServers GA, 2025-12-02",
+  "full": "Trn3 UltraServers GA, 2025-12-02",
+  "url": "https://aws.amazon.com/about-aws/whats-new/2025/12/amazon-ec2-trn3-ultraservers/",
+  "section": "AWS Trainium"
+ },
+ "A-nki": {
+  "id": "A-nki",
+  "title": "NKI programming model",
+  "full": "NKI programming model",
+  "url": "https://awsdocs-neuron.readthedocs-hosted.com/en/latest/general/nki/programming_model.html",
+  "section": "AWS Trainium"
+ },
+ "A-torch": {
+  "id": "A-torch",
+  "title": "PyTorch on Neuron / TorchNeuron",
+  "full": "PyTorch on Neuron / TorchNeuron (beta; torch-neuronx legacy)",
+  "url": "https://awsdocs-neuron.readthedocs-hosted.com/en/latest/_sources/frameworks/torch/about/index.rst",
+  "section": "AWS Trainium"
+ },
+ "A-jax": {
+  "id": "A-jax",
+  "title": "JAX on Neuron",
+  "full": "JAX on Neuron (PJRT plugin)",
+  "url": "https://awsdocs-neuron.readthedocs-hosted.com/en/latest/setup/jax/index.html",
+  "section": "AWS Trainium"
+ },
+ "A-trn4": {
+  "id": "A-trn4",
+  "title": "Trainium4 + NVLink Fusion preview",
+  "full": "Trainium4 + NVLink Fusion preview (The Register, 2025-12-02)",
+  "url": "https://www.theregister.com/2025/12/02/amazon_nvidia_trainium/",
+  "section": "AWS Trainium"
+ }
+}

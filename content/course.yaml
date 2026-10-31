@@ -1,0 +1,23 @@
+# Course structure. Chapter content lives in chapters/<id>/; a chapter listed
+# here without an index.mdx shows on the home page as not yet written.
+title: TPU Deep Dive
+summary: >-
+  Ten chapters over five days on TPU hardware, interconnect, sharding, inference
+  and the software stack, written for engineers who already know GPUs.
+days:
+  - { day: 1, theme: "Rooflines and the chip" }
+  - { day: 2, theme: "The network and the model" }
+  - { day: 3, theme: "Sharding and training" }
+  - { day: 4, theme: "Inference" }
+  - { day: 5, theme: "Compiler, kernels, profiling" }
+chapters:
+  - { id: ch01, number: 1, day: 1, block: 1, minutes: 55, title: "TPU lineage and roofline thinking" }
+  - { id: ch02, number: 2, day: 1, block: 2, minutes: 55, title: "Anatomy of a TensorCore" }
+  - { id: ch03, number: 3, day: 2, block: 1, minutes: 55, title: "ICI, OCS, slices and pods" }
+  - { id: ch04, number: 4, day: 2, block: 2, minutes: 55, title: "Transformer accounting on TPU" }
+  - { id: ch05, number: 5, day: 3, block: 1, minutes: 55, title: "Sharded matmuls and collectives on a torus" }
+  - { id: ch06, number: 6, day: 3, block: 2, minutes: 55, title: "Choosing a mesh for training" }
+  - { id: ch07, number: 7, day: 4, block: 1, minutes: 55, title: "Inference rooflines" }
+  - { id: ch08, number: 8, day: 4, block: 2, minutes: 55, title: "The TPU serving stack" }
+  - { id: ch09, number: 9, day: 5, block: 1, minutes: 55, title: "From Python to the MXU" }
+  - { id: ch10, number: 10, day: 5, block: 2, minutes: 55, title: "Pallas, XProf and a design review" }
