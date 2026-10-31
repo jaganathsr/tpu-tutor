@@ -110,8 +110,11 @@ export function App() {
           <p>
             An independent educational project, not affiliated with or endorsed by Google, NVIDIA or AWS. Product names are trademarks of their owners.
             Sources accessed October 2026; figures marked provisional, derived or unverified are explained where they appear.
+            Written with AI assistance and may contain errors: <a href="https://github.com/jaganathsr/tpu-tutor/issues/new">report one on GitHub</a>.
           </p>
-          <p>© 2026 learntpu.dev</p>
+          <p>
+            © 2026 learntpu.dev. Content <a href="https://creativecommons.org/licenses/by/4.0/" rel="license">CC BY 4.0</a>, code MIT.
+          </p>
         </div>
       </footer>
     </>

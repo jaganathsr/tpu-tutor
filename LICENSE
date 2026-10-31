@@ -1,0 +1,38 @@
+This repository uses two licenses.
+
+Course content: everything under content/ and research/, and the text of the
+published site at https://learntpu.dev, is licensed under the Creative Commons
+Attribution 4.0 International License (CC BY 4.0). The full text is in
+LICENSE-CONTENT and at https://creativecommons.org/licenses/by/4.0/.
+Attribute as: "TPU Deep Dive (learntpu.dev) by jaganathsr, CC BY 4.0".
+
+Code: everything else (src/, scripts/, configuration) is licensed under the
+MIT License below.
+
+Quoted and adapted third-party material, such as passages and exercises from
+"How to Scale Your Model" (Austin et al., Google DeepMind), remains under its
+original authors' terms and is credited where it appears.
+
+-------------------------------------------------------------------------------
+
+MIT License
+
+Copyright (c) 2026 jaganathsr
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

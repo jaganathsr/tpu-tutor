@@ -29,6 +29,7 @@ function jsonLd(r) {
     url: urlFor('/'),
     inLanguage: 'en',
     isAccessibleForFree: true,
+    license: 'https://creativecommons.org/licenses/by/4.0/',
     educationalLevel: 'Advanced',
     about: ['Tensor Processing Unit', 'Machine learning accelerators', 'Large language model inference', 'Distributed training'],
   };

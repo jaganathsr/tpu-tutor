@@ -150,3 +150,9 @@ BASE=http://localhost:4174 npm run test:routing   # or BASE=https://learntpu.dev
 ```
 
 `test:e2e` uses `playwright-core` with the system Chrome (`CHROME=/path/to/chrome` to override).
+
+## License
+
+Course content (`content/`, `research/` and the site's text) is licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); see `LICENSE-CONTENT`. Code is under the MIT License; see `LICENSE`. Quoted third-party material stays under its authors' terms.
+
+The course was written with AI assistance (Anthropic's Claude) and reviewed by the maintainer. Report errors as [GitHub issues](https://github.com/jaganathsr/tpu-tutor/issues/new).
