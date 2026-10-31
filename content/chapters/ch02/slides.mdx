@@ -1,0 +1,125 @@
+<Slide title="A TensorCore is an SM, not a Tensor Core">
+
+<Cols>
+<div>
+
+<Big n="132 vs 2">SMs on an H100 against TensorCores on an Ironwood chip</Big>
+
+</div>
+<div>
+
+- TensorCore = scalar unit + VPU + MXUs + XLU + VMEM.
+- NVIDIA Tensor Core = matrix unit inside an SM, the counterpart of the MXU.
+
+</div>
+</Cols>
+
+</Slide>
+
+<Slide title="Parts of a TensorCore">
+
+<TensorCoreDiagram />
+
+</Slide>
+
+<Slide title="One thread of control">
+
+- No warps and no hardware switching. The scalar unit issues VLIW bundles for every unit.
+- Latency is hidden by the schedule: the DMA for the next tile is already in flight.
+- XLA builds that schedule for the whole program, so every shape must be known at compile time.
+- The cost: a new shape is a new compile, which can take minutes for a large model.
+
+</Slide>
+
+<Slide title="The MXU: weight-stationary systolic array">
+
+$$
+U = \frac{M \cdot K \cdot N}{S^2 \cdot (M + K + N - 2)}
+$$
+
+<Gloss>Utilization of one weight tile: M rows streamed, K × N of an S × S array filled.</Gloss>
+
+| 256×256, full tile | M = 8 | M = 256 | M = 2,048 |
+|---|---|---|---|
+| Utilization | 1.5% | 33% | 80% |
+
+- M is the token batch: decode leaves the MXU filling and draining.
+- K = 64 (a head dimension) caps it at 25%.
+
+</Slide>
+
+<Slide title="VMEM: a scratchpad, not a cache">
+
+<Cols>
+<div>
+
+| Chip | VMEM per chip |
+|---|---|
+| v5e, v5p, v6e, 7x, 8t | 128 MiB |
+| 8i | 384 MiB |
+| H100 | 30 MB SMEM + 50 MB L2 |
+
+</div>
+<div>
+
+- Filled by explicit DMA on a compile-time schedule.
+- About 7× HBM bandwidth on Ironwood (book estimate).
+- Weights resident in VMEM: ridge about 45 FLOP/B instead of 313.
+
+</div>
+</Cols>
+
+</Slide>
+
+<Slide title="Same matmul, HBM against VMEM">
+
+<Cols>
+<div>
+<Big n="259">tokens to be compute-bound with int8 weights streamed from HBM (v5e)</Big>
+</div>
+<div>
+<Big n="11">tokens if the weights already sit in VMEM (at 22× HBM bandwidth)</Big>
+</div>
+</Cols>
+
+This is the lever TPU 8i pulls with 384 MB of SRAM.
+
+</Slide>
+
+<Slide title="Layout is (8,128)">
+
+- Vector registers are 8 sublanes × 128 lanes, so arrays are tiled 8×128.
+- bf16 is `T(8,128)(2,1)` and int8/fp8 are `T(8,128)(4,1)`: 2 or 4 values per 32-bit sublane.
+- Last two dimensions should be multiples of 8 and 128. Pallas blocks must be.
+- Relayouts show up in profiles as copy or transpose fusions.
+
+</Slide>
+
+<Slide title="Devices per chip">
+
+| Chip | TensorCores | JAX devices |
+|---|---|---|
+| v4, v5p | 2 | 1 (megacore) |
+| v5e, v6e | 1 | 1 |
+| Ironwood | 2 chiplets | 2 |
+| 8t / 8i | 1 / 2 | not documented |
+
+Ironwood's die-to-die link is 6× one ICI link: keep a chip's two chiplets on the busiest mesh axis.
+
+</Slide>
+
+<Slide title="Beyond the MXU">
+
+- **SparseCore** (v4 onward): gather/scatter engines for embeddings, about 5% of die, 5–7× on embedding-heavy models. Pallas-programmable.
+- **CAE** (8i): Collectives Acceleration Engine, up to 5× lower on-chip collective latency. The JAX table still lists a SparseCore on 8i.
+- **Trainium2**: 8 NeuronCores, each a 128×128 tensor engine plus vector, scalar and GPSIMD engines, SBUF + PSUM.
+
+</Slide>
+
+<Slide title="Where the GPU mapping breaks">
+
+- A TensorCore is not a big SM: one instruction stream, no thread switching.
+- A VPU lane is not a warp: contiguous tiles and masking, no per-thread addressing.
+- Registers are inverted: about 32 MB on an H100 against about 256 KB per TPU core. A TPU spills to VMEM instead.
+
+</Slide>

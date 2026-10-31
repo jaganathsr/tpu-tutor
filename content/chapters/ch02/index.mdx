@@ -1,0 +1,212 @@
+---
+objectives:
+  - I can draw a TensorCore and say what each unit does — scalar unit, VPU, MXU, XLU, VMEM, SMEM, vector registers and DMA engines — and which one issues instructions to the rest.
+  - I can explain weight-stationary systolic dataflow and compute an MXU tile's utilization from M, K, N and the array size.
+  - I can explain why a contraction or output dimension smaller than the array, or not a multiple of it, wastes MXU capacity, and estimate the waste.
+  - I can explain why VMEM is a compiler-managed scratchpad rather than a cache, give its size per generation, and compute the ridge point for VMEM-resident weights.
+  - I can explain (8,128) tiling and the bf16 and int8 packing, and what they imply for array shapes.
+  - I can say how many devices JAX sees per chip on v4, v5e, v5p, v6e, Ironwood, 8t and 8i, and why.
+  - I can say what SparseCores and 8i's Collectives Acceleration Engine are for.
+  - I can map SM, warp scheduler, CUDA core, shared memory, Tensor Core and HBM onto TPU units, and name three places the mapping breaks.
+teachback:
+  - A GPU hides memory latency with up to 64 resident warps per SM. What hides it on a TPU, and what does that imply for who has to be clever?
+  - Google moved from 128×128 to 256×256 matrix units in v6e. What does that buy, and what does it cost a model with head dimension 64?
+  - What is VMEM, how big is it on Ironwood and on 8i, and why did 8i triple it?
+  - Why does a decode step leave the matrix units mostly idle even if the weights were already on chip?
+sources:
+  - { id: SB2, anchor: "#what-is-a-tpu", label: "What is a TPU" }
+  - { id: SB2, anchor: "#appendix-a-more-on-tpu-internals", label: "Appendix A: VPU, scalar core" }
+  - { id: SB2, anchor: "#appendix-b-how-does-a-systolic-array-work", label: "Appendix B: systolic arrays" }
+  - { id: SB2, anchor: "#worked-problems", label: "Worked problems" }
+  - { id: P-Norrie, label: "scalar, vector and matrix units" }
+  - { id: P-v4, label: "§2.2 chip, §3 SparseCore" }
+  - { id: D-arch }
+  - { id: D-7x }
+  - { id: J-hw }
+  - { id: X-tiled }
+  - { id: PL-tpu }
+  - { id: PL-sc }
+  - { id: G-8dd }
+  - { id: PL-pipe, label: "megacore dimension semantics" }
+  - { id: T-exec, label: "compile cost" }
+  - { id: SB12, anchor: "#gpus-vs-tpus-at-the-chip-level", label: "GPUs vs TPUs at the chip level" }
+  - { id: N-tune, label: "§1.4.1, occupancy and SMEM" }
+  - { id: A-trn2-nki }
+---
+
+A TPU chip is one or two **TensorCores** plus HBM. A TensorCore is the TPU's unit of compute, the counterpart of a GPU's SM, not of a GPU's Tensor Core. The name collision causes confusion, so this course always writes TensorCore as one word for the TPU unit and "Tensor Core" as two for NVIDIA's matrix unit <Cite id="SB12" at="#what-is-a-gpu" />.
+
+An H100 has 132 SMs. An Ironwood chip has two TensorCores <Cite id="SB12" at="#what-is-a-gpu" /> <Cite id="D-7x" />. Almost every difference in this chapter follows from that ratio.
+
+## The parts of a TensorCore
+
+<Interactive caption={<><b>One Ironwood TensorCore.</b> Data moves HBM → VMEM → vector registers → MXU or VPU and back. A single scalar unit sequences all of it. Per-core figures from the JAX hardware table and the Scaling Book.</>}>
+  <TensorCoreDiagram />
+</Interactive>
+
+**The scalar unit** fetches very long instruction words (VLIW) and issues them. On v2 and v3 a bundle was 322 bits with slots for 2 scalar ops, 4 vector ops (2 of them loads and stores), 2 matrix pushes, 1 matrix pop and 1 miscellaneous op <Cite id="P-Norrie" />. It also runs loops and issues DMAs, one DMA request per cycle per core on current chips <Cite id="SB2" at="#appendix-a-more-on-tpu-internals" />. It has its own small memory, **SMEM**, 1 MiB from v4 onward <Cite id="J-hw" />.
+
+**The VPU** is an 8×128 grid of 32-bit lanes: 128 lanes across, 8 sublanes deep. On Ironwood each (lane, sublane) position has 4 ALUs, so the VPU has 4,096 ALUs per core. It runs the elementwise work, reductions within a lane, and the softmax and normalization arithmetic <Cite id="SB2" at="#appendix-a-more-on-tpu-internals" />.
+
+**The vector registers** hold 64 registers of 8×128 32-bit values each, about 256 KiB per core on Ironwood (32 registers on v4). Each cycle can do up to 3 register loads and 2 stores <Cite id="SB2" at="#appendix-a-more-on-tpu-internals" />.
+
+**The MXUs** are the matrix units: weight-stationary systolic arrays, 128×128 through v5 and 256×256 on v6e and Ironwood. They multiply in bf16 (fp8 on Ironwood) and accumulate in fp32 <Cite id="D-arch" />. Ironwood has two per TensorCore, four per chip.
+
+**The XLU** handles transposes, permutations and cross-lane reductions <Cite id="P-Norrie" />. Moving data across lanes is not free on a TPU; it goes through the XLU or through memory.
+
+**VMEM** is the on-chip memory every operand passes through on its way from HBM to the compute units. It is covered in its own section below.
+
+## One thread of control
+
+A GPU SM keeps up to 64 warps resident and switches between them every cycle. When one warp waits on memory, another runs. Latency hiding is a hardware property, and the programmer's job is to supply enough parallelism to keep occupancy up <Cite id="N-tune" s="§1.4.1.1" />.
+
+A TensorCore has one instruction stream. Nothing switches to other work when a load stalls. Latency is hidden only if the instruction stream was arranged in advance so that the DMA for the next tile is already in flight while the current tile is being multiplied. XLA does that arrangement for the whole program. It knows every shape at compile time, so it can schedule every HBM-to-VMEM copy ahead of its use <Cite id="SB2" at="#what-is-a-tpu" />. In a Pallas kernel, you do it by choosing block shapes, and the framework double-buffers for you (Chapter 10).
+
+<GpuAnalogy title="GPU analogy: who is clever">
+<p>On a GPU, the hardware is clever (warp scheduling, caches, coalescing) and the programmer feeds it enough parallel work. On a TPU, the compiler is clever and the hardware is simple. The Scaling Book's summary: TPUs "can often get closer to peak roofline performance with less work", provided the compiler can see the whole program <Cite id="SB12" at="#gpus-vs-tpus-at-the-chip-level" />.</p>
+</GpuAnalogy>
+
+<AnalogyBreaks>
+<p>The cost shows up when shapes change. A GPU kernel runs on any shape it was written for. A TPU program is compiled for exact shapes, and a new shape means a new compilation; a first compile of a large model can take minutes <Cite id="T-exec" />. Serving engines handle this by padding requests into a fixed set of shape buckets that are compiled ahead of time (Chapter 8).</p>
+</AnalogyBreaks>
+
+## The MXU is a weight-stationary systolic array
+
+A systolic array is a grid of multiply-accumulate cells that pass data only to their neighbours. In the weight-stationary arrangement the TPU uses, one tile of the weight matrix $W[K, N]$ is loaded first, one value per cell <Cite id="P-Norrie" />. Then rows of the activation matrix enter from the left edge, one row per cycle, each skewed one cycle behind the previous array row. Each cell multiplies the activation passing through it by its stored weight, adds the partial sum arriving from above, and passes the sum down. Finished outputs leave from the bottom edge <Cite id="SB2" at="#appendix-b-how-does-a-systolic-array-work" />.
+
+No cell reads memory during the multiply. Data moves one hop per cycle, and each value loaded into the array is used many times as it crosses. That reuse is what makes a large array affordable in area and power.
+
+<Interactive caption={<><b>Systolic array.</b> A weight tile is preloaded; activation rows stream in from the left; filled cells are doing a multiply-accumulate this cycle. Shrink K or N to see unused rows and columns, and raise M to see the fill and drain amortized. The model is one tile in isolation; the hardware overlaps consecutive tiles, so treat the figures as an upper bound on overhead. The animation advances only when you press Play or Step.</>}>
+  <SystolicArray />
+</Interactive>
+
+Activation $x[m, k]$ reaches cell $(k, n)$ at cycle $m + k + n$, so a tile with $M$ streamed rows finishes after $M + K + N - 2$ cycles. That gives the tile's utilization:
+
+$$
+U = \frac{M \cdot K \cdot N}{S^2 \cdot (M + K + N - 2)}
+\tag{2.1}
+$$
+
+<Gloss>Useful multiply-accumulates over the cells available during the time the tile occupies the array. S is the array size; K and N are the parts of it the weight tile fills.</Gloss>
+
+Two consequences, computed for a 256×256 array in `scripts/ch02_core.py` <Derived />:
+
+- **Rows per weight tile must be large.** With $K = N = 256$, streaming 8 rows uses 1.5% of the array's capacity over the tile, 256 rows uses 33%, and 2,048 rows uses 80%. The number of rows per weight tile is the token batch. This is the HBM roofline from Chapter 1 seen from inside the chip: a decode step loads each weight tile and uses it for a handful of tokens.
+- **K and N must fill the array.** A contraction depth of 64 on a 256-deep array caps utilization at 25% before any other loss. 128×128 tiles on a 256×256 array use a quarter of it.
+
+<Note>
+The Scaling Book states Ironwood's MXU does one bf16[8,256] × bf16[256,256] product every 4 cycles at about 2.2 GHz. That implies two multiply-accumulates per cell per cycle, which no public source explains <Unverified />. Only the per-chip total of 2,307 TFLOP/s is an official figure.
+</Note>
+
+### Padding
+
+XLA pads every matrix dimension that feeds the MXU up to a multiple of the array size. The Scaling Book's advice is to make weight dimensions multiples of 256 on v6e and Ironwood, and 128 before <Cite id="SB2" at="#tpu-specs" />. A dimension of 100 keeps 78% of its work useful on a 128-wide array and 39% on a 256-wide one. Most model dimensions are already multiples of 256. The exception that matters is **head dimension**: attention contracts over it, and many models use 64 or 128. With head dimension 64, the $QK^\top$ product fills a quarter of a 256-deep array unless the kernel packs several heads into one contraction. Chapter 8 covers how the attention kernels in vLLM TPU deal with it.
+
+## VMEM: a scratchpad, not a cache
+
+Every byte an MXU or VPU touches comes from VMEM, through the vector registers. A DMA engine copies data from HBM into VMEM before it is used and copies results back <Cite id="SB2" at="#what-is-a-tpu" />. VMEM has no tags, no eviction policy and no hit rate. What it holds at any moment is decided at compile time, by XLA's memory-space assignment pass or by a Pallas kernel's block specification.
+
+| Chip | VMEM per TensorCore | TensorCores | VMEM per chip | Other on-chip SRAM |
+|---|---|---|---|---|
+| TPU v4 | 16 MiB | 2 | 32 MiB | 128 MiB CMEM, shared |
+| TPU v5e | 128 MiB | 1 | 128 MiB | none |
+| TPU v5p | 64 MiB | 2 | 128 MiB | none |
+| TPU v6e | 128 MiB | 1 | 128 MiB | none |
+| TPU7x Ironwood | 64 MiB | 2 | 128 MiB | none |
+| TPU 8t | 128 MiB | 1 | 128 MiB | none listed |
+| TPU 8i | 192 MiB | 2 | 384 MiB | none listed |
+
+Per-TensorCore figures from the JAX hardware table <Cite id="J-hw" />, chip totals multiplied out. v4's CMEM is from the v4 paper <Cite id="P-v4" />. The 8i total matches Google's "384 MB" figure <Cite id="G-8dd" />.
+
+VMEM bandwidth is not on any spec sheet. The Scaling Book puts it at about 7× HBM on Ironwood <Cite id="SB2" at="#what-is-a-tpu" /> and roughly 40 TB/s in its GPU chapter <Cite id="SB12" at="#memory" />. One of its problems uses 22× HBM for v5e <Cite id="SB2" at="#worked-problems" />. Treat VMEM bandwidth as "several times HBM", with the exact ratio <Unverified />.
+
+That ratio matters when weights are already resident. If a layer's weights fit in VMEM and were prefetched while the previous layer ran, the matmul's ridge point is set by VMEM bandwidth, not HBM. On Ironwood at 7× HBM that ridge is about 45 FLOP/B instead of 313 <Derived />. The Scaling Book gives the example of prefetching the feed-forward weights into VMEM while attention runs <Cite id="SB2" at="#what-is-a-tpu" />.
+
+<Worked title="The same int8 matmul from HBM and from VMEM, on v5e">
+
+Adapted from the Scaling Book's Chapter 2, problem 4 <Cite id="SB2" at="#worked-problems" />. Weights int8[16384, 4096], activations int8[B, 4096], on one v5e (394 TOP/s int8, 820 GB/s HBM).
+
+- FLOPs: $2 \cdot 4096 \cdot 16384 \cdot B = 1.34 \times 10^8 B$. Bytes: $6.7 \times 10^7$ of weights plus $2.05 \times 10^4 B$ of activations.
+- From HBM: compute-bound above $B \approx 259$. The book rounds the FLOP count and gets 267.
+- From VMEM at the book's 22× HBM: compute-bound above $B \approx 11$.
+
+Same matmul, same chip: a batch of 11 saturates the MXUs if the weights already sit in VMEM, and 259 is needed if they stream from HBM. This is the lever 8i pulls with 384 MB of SRAM. Computed by `scripts/ch02_core.py`.
+
+</Worked>
+
+<GpuAnalogy title="GPU analogy: SMEM and L2">
+<p>The closest GPU structure is shared memory: programmer-managed, on chip, staging tiles for the Tensor Cores. The difference is scale. An H100 has 228 KB of shared memory per SM, about 30 MB across 132 SMs, plus a 50 MB L2 cache <Cite id="N-tune" s="§1.4.2" />. An Ironwood chip has 128 MiB of VMEM serving two cores. A whole layer's weights can sit in VMEM; on a GPU they cannot sit in one SM's shared memory.</p>
+</GpuAnalogy>
+
+<AnalogyBreaks>
+<p>L2 is a cache: it keeps what was recently used, shared by all SMs, without the programmer naming it. Nothing on a TPU does that. If the compiler did not schedule a copy, the data is not on chip. The upside is that a TPU's memory behaviour is fully determined by the compiled program and shows up exactly in a profile. The downside is that a shape the compiler cannot plan for, such as a data-dependent gather, has no cache to fall back on.</p>
+</AnalogyBreaks>
+
+## Layout: everything is tiled in 8×128
+
+The vector registers are 8 sublanes × 128 lanes, so XLA stores arrays in HBM and VMEM in tiles of that shape. A 32-bit array uses (8,128) tiles over its last two dimensions. bf16 packs two rows into each 32-bit sublane, written `(8,128)(2,1)`. int8 and fp8 pack four, written `(8,128)(4,1)` <Cite id="X-tiled" />. A profile writes the layout next to every array shape, as in `bf16[32,4096]{1,0:T(8,128)(2,1)}`. Chapter 10 reads these.
+
+Three practical consequences:
+
+- **The last two dimensions should be multiples of 8 and 128.** Anything else is padded in memory, not only in the MXU. A Pallas block shape must satisfy the same rule <Cite id="PL-tpu" />.
+- **Small second-minor dimensions waste memory.** An array of shape [3, 5] in f32 occupies a padded (8,128) tile.
+- **Changing layout costs a copy.** A transpose or a reshape that crosses tile boundaries makes XLA insert a relayout, which appears in profiles as a `copy` or `transpose` fusion.
+
+The KV-cache tensor in tpu-inference has an explicit "packing" dimension for the same reason: K and V heads are packed so that each 32-bit sublane holds two bf16 or four int8 values (Chapter 8).
+
+## How many devices per chip
+
+| Chip | TensorCores per chip | JAX devices per chip | Notes |
+|---|---|---|---|
+| TPUv2, v3 | 2 | 2 | each core a separate device |
+| TPU v4, v5p | 2 | 1 | **megacore**: the two cores act as one device sharing HBM |
+| TPU v5e, v6e | 1 | 1 | inference-oriented single-core chips |
+| TPU7x Ironwood | 2, one per chiplet | 2 | die-to-die link 6× faster than one ICI link |
+| TPU 8t | 1 | not documented | per the JAX hardware table |
+| TPU 8i | 2 | not documented | per the JAX hardware table |
+
+Sources: <Cite id="SB2" at="#what-is-a-tpu" />, <Cite id="D-7x" />, <Cite id="J-hw" />.
+
+The Ironwood change matters for code. A 4-chip Ironwood VM presents 8 JAX devices <Cite id="D-7x" />. Because the die-to-die link between a chip's two chiplets is 6× faster than one ICI link, it pays to put the two chiplets of a chip on the same mesh axis, the one that carries the most traffic. Pallas's megacore annotation, `dimension_semantics=("parallel", ...)`, splits a grid across the two cores only on v4 and v5p, where they form one device <Cite id="PL-pipe" />.
+
+## SparseCores and the Collectives Acceleration Engine
+
+Not all work is dense matrix multiplication. Embedding lookups in recommendation models are random gathers and scatters over huge tables, and the dense units handle them poorly. TPU v4 added **SparseCores** for this: 16 tiles per SparseCore, each with its own HBM channel, fetch unit and 8-wide SIMD unit, about 5% of the die. Embedding-heavy models ran 5–7× faster than with embeddings held in CPU memory <Cite id="P-v4" s="§3" />. v5p has 4 SparseCores per chip, v6e 2, Ironwood 4 <Cite id="D-arch" />.
+
+They are programmable from Pallas. The JAX documentation's example runs a gather in 4.05 ms on SparseCore against 18.1 ms with `jnp.take` on the TensorCore <Cite id="PL-sc" />. tpu-inference uses SparseCore kernels for the ragged gather and scatter in MoE routing (Chapter 8).
+
+TPU 8i replaces SparseCores with a **Collectives Acceleration Engine** (CAE), which Google says cuts on-chip collective latency by up to 5× <Cite id="G-8dd" />. The JAX hardware table still lists one SparseCore per 8i TensorCore <Cite id="J-hw" />. The two sources disagree, and which is current is <Unverified />. 8t keeps SparseCores and adds an "LLM Decoder Engine" whose function Google has not described.
+
+## Mapping a GPU onto a TPU
+
+| GPU (H100) | TPU (v5p) | Role | H100 count | v5p count |
+|---|---|---|---|---|
+| SM | TensorCore | independent compute unit | 132 | 2 |
+| Warp scheduler | VPU | SIMD vector unit | 528 | 8 slots |
+| CUDA core | VPU ALU | vector lane ALU | 16,896 fp32 | 8,192 |
+| Tensor Core | MXU | matrix unit | 528 | 8 |
+| Shared memory / L1 | VMEM | fast on-chip memory | about 32 MB total | 128 MiB |
+| Registers | Vector registers | operand storage | about 32 MB | about 256 KB |
+| HBM | HBM | capacity | 80 GB | 95 GiB |
+
+Counts from the Scaling Book's GPU chapter <Cite id="SB12" at="#gpus-vs-tpus-at-the-chip-level" />. The pattern: a GPU spends its die on many small independent units and a large register file; a TPU spends it on a few large matrix units and a large scratchpad.
+
+<AnalogyBreaks>
+<p>Three places the table misleads. First, a TensorCore is not a big SM: it has one instruction stream and no hardware thread switching. Second, a VPU lane is not a warp: CUDA threads can each address arbitrary memory and branch independently, while the VPU operates on contiguous (8,128) tiles and handles divergence by masking. Third, the register comparison is inverted: a GPU has about 128 times the register capacity, because it needs registers to hold the state of thousands of resident threads. A TPU spills to VMEM cheaply instead <Cite id="SB12" at="#gpus-vs-tpus-at-the-chip-level" />.</p>
+</AnalogyBreaks>
+
+<GpuAnalogy title="Trainium, for comparison">
+<p>AWS Trainium sits between the two. A Trainium2 chip has 8 NeuronCores. Each has one 128×128 systolic tensor engine plus separate vector, scalar and general-purpose SIMD engines that run concurrently. Each core has a 28 MiB SBUF scratchpad organized as 128 partitions, and a separate 2 MiB PSUM buffer for accumulation <Cite id="A-trn2-nki" />. Like a TPU it is systolic and scratchpad-based. Like a GPU it splits the chip into several independent cores. Chapter 11 compares all three.</p>
+</GpuAnalogy>
+
+<Worked title="Lower bound on decode latency from weight reads">
+
+Adapted from the Scaling Book's Chapter 2, problem 1 <Cite id="SB2" at="#worked-problems" />. A 200B-parameter model in bf16 is 400 GB of weights. Every decode step reads all of them at least once.
+
+- On 32 v6e chips (1,638 GB/s each): 12.5 GB per chip, 7.6 ms per step. The book, using 1.6 TB/s, gives 7.8 ms.
+- On 32 Ironwood chips (7,380 GB/s each): 1.7 ms per step.
+- On 4 Ironwood chips, the fewest that hold the weights with room to spare: 100 GB per chip, 13.6 ms per step.
+
+No batch size, kernel or compiler flag goes below these numbers. Only fewer bytes (quantization) or more chips do. Computed by `scripts/ch02_core.py`.
+
+</Worked>

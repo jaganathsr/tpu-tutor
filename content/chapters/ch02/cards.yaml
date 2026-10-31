@@ -1,0 +1,81 @@
+# Chapter 2 flashcards.
+- id: ch02-c-tensorcore
+  front: A TPU TensorCore is the counterpart of which GPU unit, and how many are there per chip?
+  back: "An SM. 1 on v5e and v6e; 2 on v4, v5p and Ironwood; 1 on 8t and 2 on 8i per the JAX table. An H100 has 132 SMs."
+  source: SB12, J-hw
+- id: ch02-c-units
+  front: Name the units inside a TensorCore.
+  back: "Scalar unit (VLIW issue, loops, DMA) with SMEM; VPU (8×128 lanes); vector registers; MXUs (systolic arrays); XLU (transpose, permute, reduce); VMEM; DMA engines."
+  source: SB2
+- id: ch02-c-single-thread
+  front: Why are TPUs called single-threaded?
+  back: "Each TensorCore has one instruction stream driven by the scalar unit. No warps and no hardware switching; the compiler's schedule hides latency."
+  source: SB12
+- id: ch02-c-mxu-size
+  front: MXU size by generation?
+  back: "256×256 int8 on v1; 128×128 on v2 through v5; 256×256 on v6e and Ironwood. bf16 in, fp32 accumulate; fp8 on Ironwood."
+  source: D-arch
+- id: ch02-c-mxu-count
+  front: MXUs per TensorCore on v5p and on Ironwood?
+  back: "v5p: 4 of 128×128. Ironwood: 2 of 256×256 (4 per chip)."
+  source: SB2
+- id: ch02-c-weight-stationary
+  front: How does a weight-stationary systolic array compute?
+  back: "A weight tile W[K,N] is preloaded, one value per cell. Activation rows enter from the left, skewed one cycle per row; each cell multiplies, adds the sum from above and passes it down. Outputs leave the bottom."
+  source: SB2 Appendix B
+- id: ch02-c-util
+  front: Utilization of one MXU tile?
+  back: "$U = MKN / (S^2 (M + K + N - 2))$. 256×256 array, full tile: 1.5% at M = 8, 33% at 256, 80% at 2,048."
+  source: scripts/ch02_core.py
+- id: ch02-c-headdim
+  front: Head dimension 64 on a 256×256 MXU?
+  back: "A contraction depth of 64 fills a quarter of the array: at most 25% utilization unless the kernel packs several heads into one contraction."
+  source: derived
+- id: ch02-c-pad
+  front: What should weight dimensions be multiples of?
+  back: "256 on v6e and Ironwood, 128 before. Otherwise XLA pads, e.g. a dimension of 100 is 39% useful on a 256-wide array."
+  source: SB2
+- id: ch02-c-vmem
+  front: VMEM per chip on v5e, v5p, Ironwood, 8t and 8i?
+  back: "128 MiB each on v5e, v5p (2 × 64), v6e, Ironwood (2 × 64) and 8t; 384 MiB on 8i (2 × 192). v4: 32 MiB plus 128 MiB CMEM."
+  source: J-hw
+- id: ch02-c-vmem-cache
+  front: Is VMEM a cache?
+  back: "No. It is a scratchpad with no tags or eviction. The compiler, or a Pallas kernel, decides what is in it at every point."
+  source: SB2
+- id: ch02-c-vmem-ridge
+  front: Ironwood ridge point for weights resident in VMEM?
+  back: "About 45 FLOP/B, if VMEM bandwidth is 7× HBM (book estimate), against 313 from HBM."
+  source: SB2, derived
+- id: ch02-c-tiling
+  front: What tile shape does XLA use on TPU, and how are bf16 and int8 packed?
+  back: "(8,128) over the last two dimensions for 32-bit types. bf16 is (8,128)(2,1): two rows per 32-bit sublane. int8 and fp8 are (8,128)(4,1)."
+  source: X-tiled
+- id: ch02-c-pallas-rule
+  front: Pallas block-shape rule?
+  back: "The last two block dimensions must be divisible by 8 and 128, or equal the full array dimensions."
+  source: PL-tpu
+- id: ch02-c-devices
+  front: JAX devices per chip on v4/v5p, v5e/v6e and Ironwood?
+  back: "v4 and v5p: 1 (megacore joins two cores). v5e and v6e: 1 (single core). Ironwood: 2 (one per chiplet)."
+  source: SB2, D-7x
+- id: ch02-c-vpu
+  front: Ironwood VPU throughput per core, compared with its MXUs?
+  back: "8 × 128 × 4 ALUs × 2.2 GHz = 9 TFLOP/s f32, 18 bf16. About 64× below the MXUs. Unfused elementwise work is costly."
+  source: SB2 Appendix A
+- id: ch02-c-sparsecore
+  front: What is a SparseCore, and which chips have them?
+  back: "A gather/scatter SIMD engine for embeddings, about 5% of a v4 die, 5–7× on embedding-heavy models. v4, v5p (4), v6e (2), Ironwood (4), 8t."
+  source: P-v4, D-arch
+- id: ch02-c-cae
+  front: What did TPU 8i add in place of SparseCores?
+  back: "A Collectives Acceleration Engine, which Google says cuts on-chip collective latency up to 5×. The JAX table still lists a SparseCore on 8i: a conflict."
+  source: G-8dd, J-hw
+- id: ch02-c-registers
+  front: Register capacity, H100 against a TPU core?
+  back: "H100: 256 KB per SM, about 32 MB total. TPU: about 256 KB of vector registers per core. GPUs need registers for thousands of resident threads."
+  source: SB12
+- id: ch02-c-trainium
+  front: How does a Trainium2 NeuronCore differ from a TensorCore?
+  back: "8 cores per chip, each with a 128×128 systolic tensor engine plus separate vector, scalar and GPSIMD engines; 28 MiB SBUF in 128 partitions plus a 2 MiB PSUM accumulation buffer."
+  source: A-trn2-nki

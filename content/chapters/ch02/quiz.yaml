@@ -1,0 +1,144 @@
+# Chapter 2 quiz. Numbers recomputed in scripts/ch02_core.py.
+- id: ch02-latency-hiding
+  type: mcq
+  prompt: "On a GPU, memory latency is hidden by switching among resident warps. What hides it on a TPU TensorCore?"
+  options:
+    - text: "A compile-time schedule that issues the DMA for the next tile while the current tile is computed."
+      correct: true
+      why: "A TensorCore has one instruction stream. XLA, or a Pallas kernel's pipeline, arranges copies ahead of use."
+    - text: "Hardware switching among several resident threads per TensorCore."
+      why: "TensorCores are single-threaded. There is nothing to switch to."
+    - text: "A large L2 cache that keeps recently used tiles."
+      why: "TPUs have no general cache in the data path. VMEM is a scratchpad filled by explicit copies."
+    - text: "Nothing; TPUs are latency-bound on every load."
+      why: "The schedule overlaps copies with compute, which is why TPUs reach a high fraction of peak on regular workloads."
+  source: "SB2 #what-is-a-tpu"
+
+- id: ch02-tc-vs-tensorcore
+  type: mcq
+  prompt: "A TPU TensorCore corresponds most closely to which GPU structure?"
+  options:
+    - text: An SM
+      correct: true
+      why: "Both are the independent compute unit containing matrix units, vector units and on-chip memory. An H100 has 132; an Ironwood chip has 2."
+    - text: An NVIDIA Tensor Core
+      why: "An NVIDIA Tensor Core is a matrix unit inside an SM, which corresponds to the TPU's MXU."
+    - text: A warp
+      why: "A warp is a group of 32 threads, an execution concept rather than a hardware unit."
+    - text: A GPU
+      why: "A GPU has over 100 SMs. A TPU chip has 1 or 2 TensorCores."
+  source: "SB12 #what-is-a-gpu"
+
+- id: ch02-util-decode
+  type: numeric
+  prompt: "A 256×256 weight-stationary MXU holds one full weight tile ($K = N = 256$). Using $U = MKN / (S^2 (M + K + N - 2))$, what fraction of the array's capacity is used when only $M = 8$ activation rows stream through that tile? Answer as a percentage."
+  answer: 1.5
+  tolerance: 0.1
+  unit: "%"
+  explanation: "$8 \\cdot 256 \\cdot 256 / (256^2 \\cdot 518) = 1.5\\%$. At $M = 2048$ it is 80%. Rows per weight tile are the token batch: decode leaves the MXU mostly filling and draining."
+  source: "SB2 #appendix-b-how-does-a-systolic-array-work"
+
+- id: ch02-head-dim
+  type: scenario
+  prompt: "On v6e, an attention kernel computes $QK^\\top$ for one head at a time, contracting over head dimension 64. Profiles show the matmul running far below MXU peak even at large sequence lengths. Why?"
+  options:
+    - text: "The contraction fills 64 of the 256 rows of the array, capping utilization at 25%."
+      correct: true
+      why: "v6e's MXUs are 256×256. A contraction depth of 64 leaves three-quarters of the array idle for every tile, unless the kernel packs several heads into one contraction."
+    - text: "Attention is always HBM-bound."
+      why: "Prefill attention has intensity about T/2 and is compute-bound at long sequence lengths (Chapter 4). The limit here is the array shape."
+    - text: "bf16 is not supported on the MXU."
+      why: "MXUs take bf16 inputs and accumulate in fp32."
+    - text: "The VPU is computing the softmax."
+      why: "Softmax runs on the VPU, but it does not slow the matmul itself, which is what the profile isolates."
+  source: "SB2 #tpu-specs"
+
+- id: ch02-vmem-ridge
+  type: numeric
+  prompt: "Ironwood's BF16 ridge against HBM is 313 FLOP/B. If VMEM bandwidth is 7× HBM bandwidth, as the Scaling Book states, what is the ridge for a matmul whose weights are already resident in VMEM?"
+  answer: 44.7
+  tolerance: 0.05
+  unit: FLOP/B
+  explanation: "$313 / 7 \\approx 45$. A batch of about 45 tokens saturates the MXUs when weights are already in VMEM, against about 313 when they stream from HBM. The 7× figure is the book's estimate, not a published spec."
+  source: "SB2 #what-is-a-tpu"
+
+- id: ch02-int8-hbm-v5e
+  type: numeric
+  prompt: "On v5e (394 TOP/s int8, 820 GB/s HBM), int8 weights [16384, 4096] multiply int8 activations [B, 4096]. Counting weight and activation bytes, above what B is the matmul compute-bound when weights stream from HBM?"
+  answer: 263
+  tolerance: 0.04
+  unit: tokens
+  explanation: "FLOPs $2 \\cdot 4096 \\cdot 16384 \\cdot B = 1.34\\times10^8 B$; bytes $6.7\\times10^7 + 2.05\\times10^4 B$. Setting FLOPs/bytes equal to $3.94\\times10^{14}/8.2\\times10^{11} = 480$ gives $B \\approx 259$. The book rounds the FLOP count to $1.3\\times10^8$ and gets 267. From VMEM at 22× HBM the answer is about 11."
+  adapted_from: SB2 Q4
+  source: "SB2 #worked-problems"
+
+- id: ch02-vpu
+  type: numeric
+  prompt: "Ironwood's VPU has 8 × 128 lanes with 4 ALUs each, issuing one f32 op per ALU per cycle, at about 2.2 GHz. What is its peak f32 throughput per TensorCore, in TFLOP/s?"
+  answer: 9.0
+  tolerance: 0.05
+  unit: TFLOP/s
+  explanation: "$8 \\cdot 128 \\cdot 4 \\cdot 2.2\\times10^9 = 9.0\\times10^{12}$. Packed bf16 doubles it to 18 TFLOP/s, about 64× below one core's 1,155 TFLOP/s of MXU throughput. Unfused elementwise work is expensive."
+  adapted_from: SB2 Appendix A pop quiz
+  source: "SB2 #appendix-a-more-on-tpu-internals"
+
+- id: ch02-devices
+  type: mcq
+  prompt: "How many JAX devices does one Ironwood (TPU7x) chip present?"
+  options:
+    - text: "Two: one per chiplet, each with one TensorCore."
+      correct: true
+      why: "Ironwood packages two compute chiplets joined by a die-to-die link 6× faster than one ICI link. A 4-chip VM shows 8 devices."
+    - text: "One, because its two TensorCores form a megacore."
+      why: "Megacore applies to v4 and v5p. Ironwood dropped it."
+    - text: "Four, one per MXU."
+      why: "MXUs are units inside a TensorCore, not devices."
+    - text: "One, because it has a single TensorCore like v5e."
+      why: "v5e and v6e have one TensorCore per chip. Ironwood has two."
+  source: "D-7x"
+
+- id: ch02-tiling
+  type: mcq
+  prompt: "XLA prints an array's layout as bf16[32,4096]{1,0:T(8,128)(2,1)}. What does (2,1) mean?"
+  options:
+    - text: "Two bf16 rows are packed into each 32-bit sublane, inside (8,128) tiles."
+      correct: true
+      why: "Vector registers are 8×128 of 32-bit values. bf16 packs 2 per word; int8 and fp8 use (4,1) and pack 4."
+    - text: "The array is sharded 2 ways on its first dimension."
+      why: "Sharding is not part of the layout string. It appears in the sharding annotation."
+    - text: "The minor-to-major order is dimension 2 then 1."
+      why: "Minor-to-major order is the {1,0} before the colon."
+    - text: "Each tile is replicated twice in memory."
+      why: "Tiling describes physical arrangement, not replication."
+  source: "X-tiled"
+
+- id: ch02-sparsecore
+  type: mcq
+  prompt: "What were SparseCores added to TPU v4 for?"
+  options:
+    - text: "Embedding lookups: irregular gathers and scatters over large tables."
+      correct: true
+      why: "About 5% of the die, with 5–7× speedups on embedding-heavy models. Pallas can program them; tpu-inference uses them for MoE routing gathers."
+    - text: "Sparse matrix multiplication with structured sparsity."
+      why: "They are SIMD gather/scatter engines, not sparse matrix units."
+    - text: "Running the host's input pipeline."
+      why: "Input pipelines run on the host CPU."
+    - text: "Error correction for HBM."
+      why: "HBM ECC is a memory-controller function. SparseCores are programmable compute."
+  source: "P-v4"
+
+- id: ch02-decode-latency
+  type: numeric
+  prompt: "A 200B-parameter model in bf16 is served on 32 Ironwood chips (7,380 GB/s HBM each), weights split evenly. What is the lower bound on one decode step from weight reads alone, in milliseconds?"
+  answer: 1.69
+  tolerance: 0.05
+  unit: ms
+  explanation: "400 GB / 32 = 12.5 GB per chip; 12.5 GB / 7.38 TB/s = 1.69 ms. On 32 v6e chips the same bound is 7.6 ms."
+  adapted_from: SB2 Q1
+  source: "SB2 #worked-problems"
+
+- id: ch02-explain
+  type: free
+  prompt: "Explain to a GPU engineer what VMEM is, how it differs from an H100's shared memory and L2, and why TPU 8i made it 3× larger."
+  model_answer: "VMEM is the TensorCore's on-chip scratchpad: every operand reaches the MXU or VPU through it, copied there by DMA on a schedule fixed at compile time. Like CUDA shared memory it is explicitly managed, but it is far larger: 128 MiB per Ironwood chip against about 228 KB per H100 SM, or about 30 MB across the GPU. Unlike L2 it is not a cache; it has no eviction policy, and data is on chip only if the program put it there. Its bandwidth is several times HBM's (the Scaling Book says about 7× on Ironwood), so a matmul whose weights are already resident has a ridge around 45 FLOP/B instead of 313. Decode is bandwidth-bound and reads the KV cache every step, so 8i's 384 MB lets more of that state stay on chip instead of being re-read from HBM."
+  source: "J-hw"
