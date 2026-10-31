@@ -1,0 +1,201 @@
+---
+objectives:
+  - I can describe the TPU topologies — a 2D torus on v5e and v6e, OCS-joined 4×4×4 cubes forming a 3D torus on v4, v5p and Ironwood, and Boardfly on 8i — and say which slice shapes have wraparound.
+  - I can convert a Cloud-docs ICI figure (per chip, both directions, all links) into per-link one-way bandwidth and into the per-axis bandwidth used in collective cost formulas.
+  - I can explain what optical circuit switches buy (reconfiguration, failure isolation, non-contiguous and twisted slices) and what they cost.
+  - I can rank HBM, ICI, PCIe and DCN for Ironwood with numbers, and say which parallelism belongs on each.
+  - I can compute hop counts, diameter and point-to-point transfer time on a slice, and say when a transfer is latency-bound rather than bandwidth-bound.
+  - I can explain why TPU 8i abandons the torus for Boardfly, using hop latency and decode traffic.
+  - I can compare TPU scale-up with NVLink domains and InfiniBand fat trees, and with Trainium's move from torus to switch.
+teachback:
+  - NVLink gives every GPU in an NVL72 rack one hop to the other 71. An Ironwood chip has 6 neighbours and the pod has 9,216 chips. Argue for each design with numbers.
+  - Why do you get roughly half the collective bandwidth on a 2×2×2 slice compared with a 4×4×4 cube?
+  - What did Google change in TPU 8i's network, and why, given what decode traffic looks like?
+  - Walk the bandwidth ladder for Ironwood from HBM to DCN and say which kind of parallelism belongs at each rung.
+sources:
+  - { id: SB2, anchor: "#tpu-networking", label: "TPU networking" }
+  - { id: SB2, anchor: "#tpu-specs", label: "TPU specs, ICI table" }
+  - { id: SB2, anchor: "#worked-problems", label: "Worked problems 2, 5, 6" }
+  - { id: D-arch, label: "slices, cubes, OCS, twisted torus" }
+  - { id: D-v4, label: "twisted torus bisection" }
+  - { id: D-v5e }
+  - { id: D-v5p }
+  - { id: D-v6e }
+  - { id: D-7x }
+  - { id: P-v4, label: "§2 OCS and availability" }
+  - { id: P-Lightwave }
+  - { id: P-Resil }
+  - { id: G-7x }
+  - { id: G-7x-ga }
+  - { id: HC-7x, label: "pod size and spares" }
+  - { id: SB3, anchor: "#a-deeper-dive-into-tpu-communication-primitives", label: "latency-bound transfers" }
+  - { id: G-8dd, label: "Boardfly vs torus math" }
+  - { id: P-Pathways, label: "§2, §4" }
+  - { id: R-maxtext, label: "ici_* and dcn_* parallelism" }
+  - { id: SB12, anchor: "#networking", label: "GPU networking" }
+  - { id: N-gb200 }
+  - { id: A-trn2-sys }
+  - { id: A-trn3-sys }
+---
+
+TPUs connect chip to chip, with no switch in the data path. Each chip has a small number of **ICI** (inter-chip interconnect) links to its nearest neighbours, and messages for distant chips pass through the chips in between <Cite id="SB2" at="#tpu-networking" />. Everything in this chapter follows from that choice: how slices are shaped, why wraparound matters, how far a pod scales, and why TPU 8i changed it.
+
+## Converting the bandwidth numbers
+
+Google's documentation quotes ICI bandwidth per chip, summed over all links and both directions. Collective cost formulas need bandwidth per link and per direction. The conversion is one division by the link count and one by two:
+
+| Chip | Docs: per chip, both directions | Links per chip | Per link, both directions | Per link, one way | Scaling Book, one way |
+|---|---|---|---|---|---|
+| TPU v5e | 400 GB/s | 4 | 100 GB/s | 50 GB/s | 45 GB/s |
+| TPU v6e | 800 GB/s | 4 | 200 GB/s | 100 GB/s | 90 GB/s |
+| TPU v5p | 1,200 GB/s | 6 | 200 GB/s | 100 GB/s | 90 GB/s |
+| TPU7x Ironwood | 1,200 GB/s | 6 | 200 GB/s | 100 GB/s | 90 GB/s |
+| TPU 8i | 2,400 GB/s (19.2 Tb/s) | not published | — | — | — |
+
+Docs: <Cite id="D-v5e" />, <Cite id="D-v6e" />, <Cite id="D-v5p" />, <Cite id="D-7x" />, <Cite id="G-8dd" />. Book: <Cite id="SB2" at="#tpu-specs" />. The book's figures are about 10% below the docs-derived ones. This course uses the docs and notes where a book answer depends on the book's value. TPU 8t's ICI is "2× Ironwood", with no absolute figure published.
+
+The number the collective formulas in Chapter 5 use is $W_\text{ici}$: the bandwidth one chip can push along one axis of the torus in a bidirectional ring. On an axis, a chip has one link in each direction, so $W_\text{ici}$ is two links times the one-way rate. On Ironwood that is 200 GB/s per axis <Derived />. The Scaling Book uses 180 GB/s.
+
+<GpuAnalogy>
+<p>An H100 has 18 NVLink 4 links at 25 GB/s each way, so 450 GB/s per direction and 900 GB/s counted both ways <Cite id="SB12" at="#at-the-node-level" />. Ironwood's 1,200 GB/s is counted the same way. Per chip, the two are comparable. The difference is where the bytes can go: an H100 reaches every GPU in its node in one hop through NVSwitch, while an Ironwood chip reaches 6 neighbours directly and everything else through them.</p>
+</GpuAnalogy>
+
+## Topology by generation
+
+**v5e and v6e: a fixed 16×16 2D torus.** Each chip has 4 links, to its neighbours in X and Y. A pod is 256 chips and cannot grow beyond that over ICI. Wraparound links exist only on an axis of the full length 16, so a 16×16 slice wraps both ways, an 8×16 slice wraps only on its 16-long axis, and a 4×4 slice does not wrap at all <Cite id="SB2" at="#tpu-networking" />.
+
+**v4, v5p and Ironwood: cubes joined by optical switches.** The physical unit is a 4×4×4 cube of 64 chips, one rack. Within a cube, chips connect over copper. Each face of a cube has 16 optical links, and the faces of all cubes in the pod run to a set of optical circuit switches <Cite id="P-v4" s="§2.1" /> <Cite id="D-arch" />. Setting the switches joins cubes into any slice shape that is a multiple of 4 on each axis, with wraparound on every axis <Cite id="SB2" at="#tpu-networking" />. Ironwood supports slices from 2×2×1 up to 9,216 chips; slices larger than 2,048 chips (8×16×16) need Google account-team approval <Cite id="D-7x" />.
+
+**Twisted tori.** For some shapes, the switches can connect the wraparound links with an offset, like a Möbius strip, which shortens the average distance. The v4 docs report about 70% more bisection bandwidth for a twisted 4×4×8 and 40% for 4×8×8 <Cite id="D-v4" />. About 28% of large v4 slices used a twisted shape <Cite id="P-v4" s="§2" />.
+
+**TPU 8i: Boardfly.** Covered in its own section below.
+
+<Interactive caption={<><b>Torus explorer.</b> Click chips to set the source and destination; the route uses dimension-order routing along the shortest direction of each axis. Turn wraparound off to see a sub-cube slice. Increase the bytes to move from the latency-bound to the bandwidth-bound regime. One link at a time is assumed; Chapter 5 adds collectives that use every link.</>}>
+  <TorusExplorer mode="2d" />
+</Interactive>
+
+### Why wraparound matters
+
+On a ring of $N$ chips with wraparound, the farthest chip is $N/2$ hops away and the average distance is $N/4$. Without wraparound the farthest is $N - 1$. More important for collectives: a ring algorithm needs the ring to close. Without the closing link, a bidirectional ring collective degrades, and the Scaling Book's rule of thumb is that a slice without wraparound "typically doubles the time of most communication" <Cite id="SB2" at="#tpu-networking" />. That is why a 2×2×2 Ironwood slice gets roughly half the collective bandwidth per chip of a full 4×4×4 cube.
+
+| Slice | Wraparound | Diameter (hops) |
+|---|---|---|
+| v5e 16×16 | both axes | 16 |
+| v5e 4×4 | none | 6 |
+| Ironwood 4×4×4 | all axes | 6 |
+| Ironwood 2×2×2 | none | 3 |
+| Ironwood 8×16×16 | all axes | 20 |
+| 8×8×16, Google's comparison case for 8i | all axes | 16 |
+
+Computed in `scripts/ch03_ici.py`.
+
+## Optical circuit switches
+
+An optical circuit switch (OCS) redirects light from input fibres to output fibres with steerable MEMS mirrors. It does not read packets, so it adds no per-packet latency and has no buffers. It sets up circuits, and reconfiguring them takes milliseconds. The v4 switch, "Palomar", has 136 ports, 128 of them used. Circulators let one fibre carry both directions, halving the port count. A 4,096-chip v4 pod uses 48 switches <Cite id="P-v4" s="§2.1–2.2" />.
+
+What the switches buy:
+
+- **Slices of any shape.** A slice is a set of cubes wired together by switch settings. The cubes do not need to sit next to each other on the floor.
+- **Failure isolation.** A rack with a failed host or chip is switched out and replaced by a spare. Google's NSDI paper on v4 operations reports 99.98% system availability, with about 1% of jobs seeing a hardware outage <Cite id="P-Resil" />. The SIGCOMM paper reports up to 3× higher availability and up to 3.3× better model-dependent performance than a static fabric <Cite id="P-Lightwave" />.
+- **Spares in the pod.** Ironwood pods have 9,216 chips; the Hot Chips coverage attributes the choice of 9,216 over 8,192 to spare racks <Cite id="HC-7x" />.
+
+What they cost: under 5% of system cost and under 3% of power, per the v4 paper. The SIGCOMM paper, counting differently, says under 6% <Cite id="P-v4" /> <Cite id="P-Lightwave" />.
+
+<AnalogyBreaks>
+<p>An OCS is not a network switch in the NVSwitch or InfiniBand sense. It does not route packets, does not reduce data in the network (no SHARP equivalent) and cannot change paths per message. Once a slice is configured, the topology is a fixed torus of direct links. The switch decides which chips are neighbours; ICI routing within the chips decides how messages travel.</p>
+</AnalogyBreaks>
+
+## Hosts, PCIe and DCN
+
+Chips sit four to a tray, and a host CPU attaches to its tray over PCIe <Cite id="SB2" at="#tpu-networking" />. v5e and v6e hosts drive 8 chips; v4, v5p and Ironwood hosts drive 4 <Cite id="D-v5e" /> <Cite id="D-7x" />. A 4-chip Ironwood VM has 224 vCPUs and 960 GB of RAM <Cite id="D-7x" />.
+
+Slices connect to each other through the hosts over the datacenter network, **DCN**: chip, PCIe, host NIC, network, remote NIC, PCIe, chip <Cite id="SB2" at="#tpu-networking" />. This is **multislice**. DCN bandwidth is 50 Gb/s per chip on v5p and 100 Gb/s on v6e and Ironwood, that is 6.25 and 12.5 GB/s <Cite id="D-v5p" /> <Cite id="D-7x" />. TPU 8t's new Virgo network raises DCN up to 4× Ironwood and connects more than 134,000 chips in one fabric, with 47 Pb/s of bisection bandwidth <Cite id="G-8dd" />.
+
+<Worked title="Ironwood's bandwidth ladder, per chip, one direction">
+
+| Link | Bandwidth | HBM ÷ link |
+|---|---|---|
+| HBM | 7,380 GB/s | 1 |
+| ICI, all 6 links | 600 GB/s | 12 |
+| ICI, one link | 100 GB/s | 74 |
+| PCIe (book figure for v6e) | 32 GB/s | 231 |
+| DCN | 12.5 GB/s | 590 |
+
+From <Cite id="D-7x" /> and <Cite id="SB2" at="#tpu-specs" />, computed in `scripts/ch03_ici.py`. Ironwood's PCIe rate is not published; the book's v6e figure stands in.
+
+</Worked>
+
+The ladder sets where each kind of parallelism belongs. Tensor parallelism exchanges activations every layer and needs ICI. FSDP gathers weights every layer and needs ICI. Pure data parallelism exchanges gradients once per step, can overlap them with the backward pass, and tolerates DCN. MaxText encodes exactly this split: every parallelism axis exists twice, as `ici_*_parallelism` within a slice and `dcn_*_parallelism` across slices. Its default config comments `dcn_tensor_parallelism` as "never recommended" <Cite id="R-maxtext" />. Chapter 6 derives the batch size needed for DCN data parallelism.
+
+**Pathways.** Classic multi-host JAX runs the same Python program on every host, a multi-controller model. Pathways instead runs one controller that dispatches compiled programs asynchronously to groups of chips connected by ICI ("islands"), which it calls across DCN <Cite id="P-Pathways" s="§2, §4" />. It reported close to 100% accelerator utilization on SPMD workloads at 2,048 TPUs. Google's 8t announcement describes scaling to more than a million chips per cluster with JAX and Pathways <Cite id="G-8dd" />.
+
+## Latency, bandwidth, and why 8i left the torus
+
+Every ICI hop costs about 1 µs, whatever the message size <Cite id="SB2" at="#worked-problems" />. A transfer's time is the sum of a latency term and a bandwidth term:
+
+$$
+T \approx \text{hops} \cdot 1\,\mu\text{s} + \frac{\text{bytes}}{\text{links used} \cdot W_\text{link}}
+\tag{3.1}
+$$
+
+<Gloss>Each hop adds a fixed microsecond; the bytes then flow at the bandwidth of the links carrying them.</Gloss>
+
+<Worked title="Point to point across a slice">
+
+Adapted from the Scaling Book's Chapter 2, problem 5 <Cite id="SB2" at="#worked-problems" />. Send bf16[8, 128, 8192], 16.8 MB, from one corner of a v5e 4×4 slice to the opposite corner. The slice has no wraparound, so the route is 6 hops, and the source has 2 outgoing links.
+
+- Bandwidth: $1.68 \times 10^7 / (2 \cdot 45 \times 10^9) = 186\ \mu\text{s}$. The book rounds to 188.
+- Latency: $6 \cdot 1\ \mu\text{s} = 6\ \mu\text{s}$; the first byte arrives at about 6 µs.
+- Total: about 192 µs. Bandwidth dominates.
+
+On an Ironwood 4×4×4 cube with wraparound, between chips 6 hops apart and using 3 outgoing links at 100 GB/s: 56 µs plus 6 µs <Derived />.
+
+</Worked>
+
+Now shrink the message. A decode step with a small batch moves kilobytes per collective, not megabytes. On v5e, below about 45 kB per hop, the latency term exceeds the bandwidth term <Cite id="SB3" at="#a-deeper-dive-into-tpu-communication-primitives" />. In that regime, time is hop count times 1 µs, and the torus's diameter is the problem: 16 hops across an 8×8×16 slice.
+
+TPU 8i's answer is **Boardfly**, a hierarchical topology in the dragonfly family <Cite id="G-8dd" />:
+
+- 4 chips on a board form the basic unit.
+- 8 boards form a group, fully connected to each other.
+- 36 groups connect through optical circuit switches, for 1,152 chips. Google says up to 1,024 are active, and the rest are presumably spares.
+- The largest chip-to-chip distance is 7 hops, against 16 for a 1,024-chip 8×8×16 torus. Google describes this as cutting the network diameter by more than 50%.
+
+Combined with the Collectives Acceleration Engine (Chapter 2), the design targets the latency-bound AllReduce and AllToAll traffic of low-batch MoE decoding, rather than the bandwidth-bound gradient traffic of training. 8t, the training chip, keeps the 3D torus.
+
+<GpuAnalogy title="GPU analogy: NVLink domain and fat tree">
+<p>A GPU cluster has two tiers <Cite id="SB12" at="#networking" />:</p>
+<ul>
+<li><b>Scale-up:</b> an NVLink domain of 8 GPUs (HGX) or 72 (NVL72), all-to-all in one hop through NVSwitches, which can also reduce data in the switch (SHARP). An NVL72 rack gives each GPU 1.8 TB/s of NVLink bandwidth <Cite id="N-gb200" />.</li>
+<li><b>Scale-out:</b> an InfiniBand or Ethernet fat tree. A DGX H100 node has 400 GB/s of egress, 50 GB/s per GPU, with full bisection up to the spine.</li>
+</ul>
+<p>A TPU pod puts about 9,000 chips in one direct-connect domain at full ICI bandwidth. That is about 128 times the NVL72 scale-up domain, at the price of multiple hops and no in-network reduction.</p>
+</GpuAnalogy>
+
+<GpuAnalogy title="Trainium, for comparison">
+<p>Trainium has moved in the opposite direction from TPU. A Trn2 instance connects its 16 chips in a 4×4 2D torus, and an UltraServer links 4 instances by connecting same-position chips in rings, for 64 chips <Cite id="A-trn2-sys" />. Trainium3 replaced the torus with NeuronSwitch, an all-to-all switched fabric of 64 or 144 chips, explicitly for MoE and autoregressive serving <Cite id="A-trn3-sys" />. AWS has also previewed NVLink Fusion for Trainium4. GPU and Trainium are converging on switched scale-up domains of 72 to 144 chips. TPU keeps the large torus for training, and has added a low-diameter network for inference.</p>
+</GpuAnalogy>
+
+## Pod accounting
+
+Adapted from the Scaling Book's Chapter 2, problem 2 <Cite id="SB2" at="#worked-problems" />, with Ironwood added. Computed in `scripts/ch03_ici.py`.
+
+| Pod | Chips | Hosts | TensorCores | BF16 FLOP/s | HBM |
+|---|---|---|---|---|---|
+| v5e | 256 | 32 | 256 | $5.0 \times 10^{16}$ | 4 TiB |
+| v5p | 8,960 | 2,240 | 17,920 | $4.1 \times 10^{18}$ | 840 TiB |
+| Ironwood | 9,216 | 2,304 | 18,432 | $2.1 \times 10^{19}$ | 1,728 TiB |
+
+Ironwood's FP8 peak for the pod is $4.25 \times 10^{19}$, matching Google's 42.5 exaFLOPS <Cite id="G-7x" />. Google's announcement gives 1.77 PB of HBM per pod, which is 9,216 × 192 GB counted in decimal units <Cite id="G-7x-ga" />. The docs give 192 GiB per chip, which would make it 1.90 PB <Cite id="D-7x" />. Unit labels in Google's materials are inconsistent, and the true figure is <Unverified />.
+
+<Worked title="Loading a matrix from host memory">
+
+Adapted from the Scaling Book's Chapter 2, problem 6 <Cite id="SB2" at="#worked-problems" />. A 16 GB int8 matrix is spread across the host DRAM of a v5e 4×4 slice, two hosts, and must end up on one chip.
+
+- PCIe: each of 16 chips loads its 1 GB shard at 16 GB/s, so 62 ms in parallel.
+- ICI: the destination chip must receive 15 GB through its 2 links at 45 GB/s, at least 167 ms.
+- HBM read for the matmul: 16 GB at 820 GB/s, 20 ms.
+
+Pipelined, the slowest stage sets the time: at least 167 ms, about 200 ms in practice by the book's estimate. The single destination chip's two ICI links are the bottleneck, not PCIe and not DCN.
+
+</Worked>

@@ -1,0 +1,120 @@
+<Slide title="No switch in the data path">
+
+- Each chip has direct ICI links to its nearest neighbours: 4 on v5e and v6e, 6 on v4, v5p and Ironwood.
+- Messages to distant chips hop through intermediate chips, at about 1 µs per hop.
+- Per-chip bandwidth stays constant as the pod grows: about 9,000 chips at full ICI bandwidth.
+
+</Slide>
+
+<Slide title="Reading the bandwidth numbers">
+
+| Chip | Docs, per chip both ways | Per link, one way | $W_\text{ici}$ per axis |
+|---|---|---|---|
+| v5e | 400 GB/s / 4 links | 50 GB/s (book 45) | 100 GB/s |
+| v5p, Ironwood | 1,200 GB/s / 6 links | 100 GB/s (book 90) | 200 GB/s |
+| 8i | 2,400 GB/s | not published | — |
+
+<Gloss>Divide by links, then by two. $W_\text{ici}$ counts the two links of one axis.</Gloss>
+
+</Slide>
+
+<Slide title="Topologies">
+
+<Cols>
+<div>
+
+- **v5e, v6e:** 16×16 2D torus, 256 chips. Wraps only on 16-long axes.
+- **v4, v5p, Ironwood:** 4×4×4 cubes joined by optical switches into a 3D torus. Wraps on every axis of a whole number of cubes.
+
+</div>
+<div>
+
+- **Twisted tori:** offset wraparound, +70% bisection on 4×4×8.
+- **8i Boardfly:** 4-chip boards, 8-board groups, 36 groups. At most 7 hops across 1,152 chips.
+
+</div>
+</Cols>
+
+</Slide>
+
+<Slide title="Try it: hops and wraparound">
+
+<TorusExplorer mode="2d" />
+
+</Slide>
+
+<Slide title="Optical circuit switches">
+
+<Cols>
+<div>
+
+- MEMS mirrors steer light between fibres; reconfigure in milliseconds.
+- No packets read, no buffers, no in-network reduction.
+
+</div>
+<div>
+
+- Slices of any shape from non-adjacent cubes.
+- Route around failed racks: 99.98% availability on v4.
+- Under 5% of system cost.
+
+</div>
+</Cols>
+
+</Slide>
+
+<Slide title="Ironwood bandwidth ladder, per chip, one way">
+
+| Link | GB/s | HBM ÷ link |
+|---|---|---|
+| HBM | 7,380 | 1 |
+| ICI, all 6 links | 600 | 12 |
+| ICI, one link | 100 | 74 |
+| PCIe (v6e figure) | 32 | 231 |
+| DCN | 12.5 | 590 |
+
+TP and FSDP on ICI. Data parallelism across DCN. MaxText: `dcn_tensor_parallelism` "never recommended".
+
+</Slide>
+
+<Slide title="Latency or bandwidth">
+
+$$
+T \approx \text{hops} \cdot 1\,\mu\text{s} + \frac{\text{bytes}}{\text{links} \cdot W_\text{link}}
+$$
+
+<Cols>
+<div>
+<Big n="192 µs">16.8 MB corner to corner on a v5e 4×4: bandwidth-bound</Big>
+</div>
+<div>
+<Big n="16 hops">across an 8×8×16 slice: a small decode collective is latency-bound</Big>
+</div>
+</Cols>
+
+</Slide>
+
+<Slide title="Against GPU and Trainium">
+
+| | Scale-up domain | Hops | In-network reduction |
+|---|---|---|---|
+| NVL72 | 72 GPUs, 1.8 TB/s each | 1 | yes (SHARP) |
+| Ironwood | 9,216 chips, 1.2 TB/s each | 20 across an 8×16×16 slice | no |
+| 8i | 1,152 chips, 2.4 TB/s each | up to 7 | CAE on chip |
+| Trn3 | 64 or 144 chips | switched | — |
+
+GPU and Trainium converge on switched domains of 72 to 144. TPU keeps a torus for training and adds Boardfly for inference.
+
+</Slide>
+
+<Slide title="Pod accounting">
+
+| Pod | Chips | Hosts | BF16 FLOP/s | HBM |
+|---|---|---|---|---|
+| v5e | 256 | 32 | 5.0e16 | 4 TiB |
+| v5p | 8,960 | 2,240 | 4.1e18 | 840 TiB |
+| Ironwood | 9,216 | 2,304 | 2.1e19 | 1,728 TiB |
+
+Ironwood FP8: 42.5 EFLOP/s per pod. Google's "1.77 PB" is 9,216 × 192 GB in decimal units; the docs say 192 GiB.
+
+</Slide>

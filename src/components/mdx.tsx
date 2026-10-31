@@ -7,6 +7,7 @@ import { RooflinePlotter } from '../interactives/RooflinePlotter';
 import { GenerationChart } from '../interactives/GenerationChart';
 import { SystolicArray } from '../interactives/SystolicArray';
 import { TensorCoreDiagram } from '../interactives/TensorCoreDiagram';
+import { TorusExplorer } from '../interactives/TorusExplorer';
 
 type Src = { id: string; title: string; url: string; section: string };
 const SRC = sources as Record<string, Src>;
@@ -183,4 +184,5 @@ export const mdxComponents = {
   GenerationChart,
   SystolicArray,
   TensorCoreDiagram,
+  TorusExplorer,
 };

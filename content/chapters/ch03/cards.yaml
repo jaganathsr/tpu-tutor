@@ -1,0 +1,85 @@
+# Chapter 3 flashcards.
+- id: ch03-c-ici
+  front: What is ICI?
+  back: "Inter-chip interconnect: direct chip-to-chip links with routing on the chip and no switch in the data path. Messages to distant chips hop through intermediate chips."
+  source: SB2
+- id: ch03-c-convert
+  front: How do you get per-link one-way bandwidth from a Cloud-docs ICI figure?
+  back: "Divide by the number of links, then by 2. Ironwood: 1,200 / 6 / 2 = 100 GB/s."
+  source: D-7x
+- id: ch03-c-wici
+  front: "What is $W_\\text{ici}$ in the collective formulas, and its value on Ironwood?"
+  back: "Bandwidth one chip pushes along one torus axis in a bidirectional ring: 2 links × one-way rate. Ironwood: 200 GB/s (docs-derived); the book uses 180."
+  source: SB3, derived
+- id: ch03-c-v5e-topo
+  front: v5e and v6e topology and pod size?
+  back: "Fixed 16×16 2D torus, 256 chips, 4 links per chip. Wraparound only on axes of length 16."
+  source: SB2
+- id: ch03-c-cube
+  front: What is the physical building block of v4, v5p and Ironwood pods?
+  back: "A 4×4×4 cube of 64 chips (one rack), wired with copper inside and joined to other cubes by optical circuit switches."
+  source: P-v4, D-arch
+- id: ch03-c-wrap
+  front: Which Ironwood slices have wraparound?
+  back: "Any slice that is a whole number of cubes, i.e. a multiple of 4 on each axis. 2×2×1 through 2×2×4 do not."
+  source: SB2
+- id: ch03-c-nowrap
+  front: Cost of losing wraparound?
+  back: "Ring collectives cannot close; the book's rule of thumb is about 2× the communication time."
+  source: SB2
+- id: ch03-c-ocs
+  front: What does an optical circuit switch do, and not do?
+  back: "Steers light between fibres with MEMS mirrors to set which cube faces connect; reconfigures in milliseconds. It reads no packets, adds no per-packet latency and does no in-network reduction."
+  source: P-v4
+- id: ch03-c-ocs-buys
+  front: Three things the OCS buys.
+  back: "Slices of any 4n×4m×4k shape from non-adjacent cubes; routing around failed racks (99.98% availability on v4); twisted tori for more bisection."
+  source: P-v4, P-Resil
+- id: ch03-c-twisted
+  front: Twisted torus gain on v4?
+  back: "About +70% bisection for 4×4×8 and +40% for 4×8×8."
+  source: D-v4
+- id: ch03-c-hop
+  front: ICI latency per hop?
+  back: "About 1 µs. On v5e, chunks under about 45 kB per hop are latency-bound."
+  source: SB2, SB3
+- id: ch03-c-diam
+  front: Diameter of a ring of N with wraparound, and its average distance?
+  back: "N/2 hops; average N/4. Without wraparound: N - 1."
+  source: derived
+- id: ch03-c-boardfly
+  front: TPU 8i Boardfly topology?
+  back: "4-chip boards; 8 fully connected boards per group; 36 groups via OCS = 1,152 chips (up to 1,024 active). At most 7 hops, against 16 for an 8×8×16 torus."
+  source: G-8dd
+- id: ch03-c-why-boardfly
+  front: Why did 8i leave the torus?
+  back: "Small-batch decode collectives are latency-bound at about 1 µs per hop, so diameter matters more than bandwidth. 8t, for training, keeps the 3D torus."
+  source: G-8dd
+- id: ch03-c-ladder
+  front: Ironwood bandwidth ladder per chip, one direction?
+  back: "HBM 7,380 GB/s; ICI 600 (all links), 100 (one link); PCIe about 32 (book's v6e figure); DCN 12.5 GB/s. DCN is 590× slower than HBM."
+  source: D-7x
+- id: ch03-c-dcn
+  front: DCN bandwidth per chip on v5p, Ironwood and 8t?
+  back: "v5p 50 Gb/s (6.25 GB/s); Ironwood 100 Gb/s (12.5 GB/s); 8t up to 4× Ironwood over the Virgo network."
+  source: D-v5p, D-7x, G-8dd
+- id: ch03-c-hosts
+  front: Chips per host by generation?
+  back: "4 on v4, v5p and Ironwood; 8 on v5e and v6e. An Ironwood VM has 4 chips (8 JAX devices), 224 vCPUs, 960 GB RAM."
+  source: D-7x
+- id: ch03-c-maxtext
+  front: How does MaxText express the ICI and DCN split?
+  back: "Each axis has ici_*_parallelism and dcn_*_parallelism. Defaults: FSDP over ICI, data parallelism over DCN; DCN tensor parallelism 'never recommended'."
+  source: R-maxtext
+- id: ch03-c-pathways
+  front: Pathways versus multi-controller JAX?
+  back: "Multi-controller: every host runs the same program. Pathways: one controller dispatches compiled programs asynchronously to ICI islands, across DCN."
+  source: P-Pathways
+- id: ch03-c-gpu
+  front: GPU scale-up and scale-out, for comparison?
+  back: "NVLink domain of 8 or 72 GPUs, one hop, with in-switch SHARP reduction; NVL72 gives 1.8 TB/s per GPU. Then an IB/Ethernet fat tree, 400 GB/s per 8-GPU H100 node."
+  source: SB12, N-gb200
+- id: ch03-c-trainium
+  front: How did Trainium's topology change from Trn2 to Trn3?
+  back: "Trn2: 4×4 2D torus per instance, rings across 4 instances (64 chips). Trn3: NeuronSwitch all-to-all fabric of 64 or 144 chips."
+  source: A-trn2-sys, A-trn3-sys

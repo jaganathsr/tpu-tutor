@@ -1,0 +1,150 @@
+# Chapter 3 quiz. Numbers recomputed in scripts/ch03_ici.py.
+- id: ch03-convert
+  type: numeric
+  prompt: "The Cloud docs list Ironwood ICI as 1,200 GB/s per chip, bidirectional, over 6 links. What is the bandwidth of one link in one direction, in GB/s?"
+  answer: 100
+  tolerance: 0.02
+  unit: GB/s
+  explanation: "1,200 / 6 = 200 GB/s per link counting both directions, so 100 GB/s each way. The Scaling Book's table uses 90."
+  source: "D-7x"
+
+- id: ch03-wraparound
+  type: mcq
+  prompt: "Which of these v5e slices has wraparound on both axes?"
+  options:
+    - text: 16×16
+      correct: true
+      why: "v5e and v6e wrap only on an axis of the full length 16. A full pod wraps both ways."
+    - text: 8×16
+      why: "Wraps only on the 16-long axis."
+    - text: 4×4
+      why: "No wraparound on either axis; the corner-to-corner distance is 6 hops."
+    - text: 8×8
+      why: "Neither axis is 16 long, so neither wraps."
+  source: "SB2 #tpu-networking"
+
+- id: ch03-small-slice
+  type: scenario
+  prompt: "A team moves a job from an Ironwood 4×4×4 cube to a 2×2×2 slice to save cost, keeping the per-chip batch the same. AllGather time per step roughly doubles. Why?"
+  options:
+    - text: "Slices smaller than a cube have no wraparound links, so ring collectives cannot close the ring and lose about half their bandwidth."
+      correct: true
+      why: "The Scaling Book's rule of thumb: no wraparound typically doubles the time of most communication."
+    - text: "Each chip in the smaller slice has less ICI bandwidth."
+      why: "Per-chip, per-link bandwidth is the same. The topology changed."
+    - text: "The OCS adds latency for small slices."
+      why: "A 2×2×2 slice sits inside one cube on copper ICI; no optical switch is in the path."
+    - text: "HBM bandwidth is shared across fewer chips."
+      why: "HBM is per chip; the number of chips does not change it."
+  source: "SB2 #tpu-networking"
+
+- id: ch03-ocs
+  type: mcq
+  prompt: "Which statement about TPU optical circuit switches is false?"
+  options:
+    - text: "They reduce data in the network, like NVSwitch SHARP."
+      correct: true
+      why: "This is the false statement. An OCS steers light between fibres with mirrors. It reads no packets and cannot sum anything; reductions happen on the chips."
+    - text: "They let a pod be cut into slices of any shape that is a multiple of 4 per axis."
+      why: "True: switch settings decide which cube faces connect."
+    - text: "They let failed racks be replaced by spares."
+      why: "True: v4 reported 99.98% system availability, with OCS reconfiguration around failures."
+    - text: "They cost under 5% of a v4 system."
+      why: "True per the v4 paper; the SIGCOMM paper's accounting says under 6%."
+  source: "P-v4"
+
+- id: ch03-p2p
+  type: numeric
+  prompt: "On a v5e 4×4 slice (no wraparound), 16.8 MB moves from chip (0,0) to chip (3,3) over the source's 2 outgoing links at 45 GB/s each, with 1 µs per hop. Total time in µs?"
+  answer: 192
+  tolerance: 0.04
+  unit: µs
+  explanation: "Bandwidth: $1.68\\times10^7 / (2 \\cdot 4.5\\times10^{10}) = 186\\ \\mu$s. Latency: 6 hops = 6 µs. Total about 192 µs. The book rounds to 194."
+  adapted_from: SB2 Q5
+  source: "SB2 #worked-problems"
+
+- id: ch03-latency-bound
+  type: scenario
+  prompt: "A decode step's AllReduce moves 16 kB per chip across an 8×8×16 Ironwood slice. Doubling ICI bandwidth would barely change its time. What would?"
+  options:
+    - text: "Fewer hops: the transfer is latency-bound at about 1 µs per hop, and the slice's diameter is 16."
+      correct: true
+      why: "At 16 kB, bytes over 100 GB/s is 0.16 µs per hop, far below the 1 µs hop latency. Hop count sets the time, which is the problem 8i's 7-hop Boardfly addresses."
+    - text: "Larger HBM bandwidth."
+      why: "HBM is not on the path of an ICI transfer."
+    - text: "Quantizing the message to int8."
+      why: "Halving 16 kB to 8 kB halves an already negligible bandwidth term."
+    - text: "Moving it to DCN."
+      why: "DCN is slower in both latency and bandwidth."
+  source: "G-8dd"
+
+- id: ch03-boardfly
+  type: mcq
+  prompt: "TPU 8i's Boardfly topology has a maximum distance of how many hops between chips, against 16 for an 8×8×16 torus of similar size?"
+  options:
+    - text: "7"
+      correct: true
+      why: "4-chip boards, 8 fully connected boards per group, 36 groups joined by OCS: at most 7 hops across 1,152 chips."
+    - text: "1"
+      why: "One hop to every chip would need a switch with 1,151 ports or a full mesh. That describes an NVL72 rack at 72 GPUs, not Boardfly."
+    - text: "3"
+      why: "A group of 8 boards is close to that, but crossing groups through the optical layer adds hops."
+    - text: "12"
+      why: "Google's figure is a reduction of more than half from 16."
+  source: "G-8dd"
+
+- id: ch03-ladder
+  type: numeric
+  prompt: "Ironwood has 7,380 GB/s of HBM and 12.5 GB/s of DCN per chip. By what factor is DCN slower?"
+  answer: 590
+  tolerance: 0.03
+  unit: ×
+  explanation: "7,380 / 12.5 = 590. One ICI link one way is 74× slower than HBM; DCN is a further 8× below that. Only gradient exchange once per step, overlapped with compute, tolerates DCN."
+  source: "D-7x"
+
+- id: ch03-dcn-parallelism
+  type: mcq
+  prompt: "MaxText exposes every parallelism axis twice, as ici_*_parallelism and dcn_*_parallelism. Which one does its default config call 'never recommended'?"
+  options:
+    - text: dcn_tensor_parallelism
+      correct: true
+      why: "Tensor parallelism exchanges activations every layer. At 12.5 GB/s of DCN per chip that is far too slow."
+    - text: dcn_data_parallelism
+      why: "This is the recommended DCN axis: gradients cross once per step and overlap with the backward pass."
+    - text: ici_fsdp_parallelism
+      why: "The default sets this to -1, meaning use all remaining ICI devices."
+    - text: ici_tensor_parallelism
+      why: "Tensor parallelism over ICI is standard, within the limits derived in Chapter 6."
+  source: "R-maxtext"
+
+- id: ch03-pod
+  type: numeric
+  prompt: "An Ironwood pod has 9,216 chips with 2,307 TFLOP/s of BF16 each. Total BF16 FLOP/s for the pod, in exaFLOP/s?"
+  answer: 21.3
+  tolerance: 0.03
+  unit: EFLOP/s
+  explanation: "$9216 \\cdot 2.307\\times10^{15} = 2.13\\times10^{19}$. FP8 doubles it to 42.5 EFLOP/s, Google's headline figure."
+  adapted_from: SB2 Q2
+  source: "D-7x"
+
+- id: ch03-host-offload
+  type: scenario
+  prompt: "A 16 GB int8 matrix lives in the host DRAM of a v5e 4×4 slice and must end up on chip (0,0) for a matmul. Which stage bounds the time?"
+  options:
+    - text: "ICI into chip (0,0): 15 GB through its 2 links at 45 GB/s, about 167 ms."
+      correct: true
+      why: "PCIe loads in parallel across 16 chips in about 62 ms, and the HBM read is 20 ms. One chip's two links are the narrowest point."
+    - text: "PCIe: about 62 ms."
+      why: "All 16 chips load their shards in parallel. It is the second-slowest stage."
+    - text: "The matmul's HBM read: 20 ms."
+      why: "Fast relative to the gather."
+    - text: "DCN between the two hosts."
+      why: "Routing over DCN would be slower still; the right plan avoids it by loading each shard over its own chip's PCIe and gathering over ICI."
+  adapted_from: SB2 Q6
+  source: "SB2 #worked-problems"
+
+- id: ch03-explain
+  type: free
+  prompt: "Explain to a GPU engineer why a TPU pod can reach 9,216 chips without packet switches while an NVLink domain stops at 72, and what each design makes cheap or expensive."
+  model_answer: "Each TPU chip has a fixed number of direct ICI links, 6 on Ironwood at 100 GB/s each way, to its nearest neighbours in a 3D torus. Adding chips adds links in proportion, so per-chip bandwidth stays constant as the pod grows, with no switch silicon and no switch ports to run out of. Optical circuit switches only set which cube faces connect; they never touch packets. The cost is distance: messages to far chips cross many hops at about 1 µs each, there is no in-network reduction, and only uniform patterns such as ring collectives along an axis get full bandwidth. NVLink gives every GPU one hop to every other GPU in the domain and in-switch reduction, which makes all-to-all traffic and small latency-bound collectives cheap, but every link ends at a switch port, which bounds the domain at 72 today. Beyond it, GPUs fall to an InfiniBand or Ethernet fat tree at about 50 GB/s per GPU on H100. TPU 8i's Boardfly is Google moving toward the low-diameter end for inference."
+  source: "SB12 #networking"
