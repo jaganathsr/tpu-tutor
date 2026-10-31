@@ -9,7 +9,11 @@ const b = await chromium.launch({ executablePath: process.env.CHROME ?? '/usr/bi
 const p = await b.newPage();
 const errs = [];
 p.on('pageerror', (e) => errs.push(e.message));
-p.on('response', (r) => { if (r.status() >= 400 && !r.url().includes('favicon')) errs.push(`${r.status()} ${r.url()}`); });
+// Routes that are not prerendered (e.g. /slides/all/5/) are served by 404.html with a 404 status; that is expected.
+p.on('response', (r) => {
+  const fallback = r.status() === 404 && r.request().resourceType() === 'document';
+  if (r.status() >= 400 && !fallback && !r.url().includes('favicon')) errs.push(`${r.status()} ${r.url()}`);
+});
 const path = () => new URL(p.url()).pathname + new URL(p.url()).hash;
 
 await p.goto(`${B}/ch/ch07/`);
