@@ -79,5 +79,12 @@ for (const ch of course.chapters) {
   console.log(`${dir}: ${quiz.length} questions, ${cards.length} cards`);
 }
 
+for (const f of readdirSync('content/pages')) {
+  const src = readFileSync(`content/pages/${f}`, 'utf8');
+  const fm = load(src.match(/^---([\s\S]*?)---/)[1]);
+  if (!fm.title || !fm.description || fm.description.length > 160 || !fm.updated) report(`content/pages/${f}`, 'needs title, description (at most 160 characters) and updated');
+  lintText(`content/pages/${f}`, src.replace(/^---[\s\S]*?---/, ''));
+}
+
 console.log(problems ? `${problems} problems` : 'content ok');
 process.exit(problems ? 1 : 0);

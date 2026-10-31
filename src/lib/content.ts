@@ -107,6 +107,13 @@ export async function preloadForPath(path: string) {
   }
 }
 
+const pageFiles = import.meta.glob<MdxModule>('../../content/pages/*.mdx', { eager: true });
+
+/** Site pages (About, Privacy, Terms) from content/pages/<slug>.mdx. */
+export const sitePages = Object.fromEntries(
+  Object.entries(pageFiles).map(([p, m]) => [p.split('/').pop()!.replace(/\.mdx$/, ''), { Content: m.default, ...(m.frontmatter as { title: string; description: string; updated: string }) }]),
+);
+
 export const courseInfo = course as { title: string; summary: string; days: { day: number; theme: string }[] };
 
 export function chapter(id: string) {

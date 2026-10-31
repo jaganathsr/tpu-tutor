@@ -1,0 +1,37 @@
+---
+title: About
+description: "What learntpu.dev is, who it is for, how the TPU Deep Dive course was researched, and how to report errors or suggest changes."
+updated: 2026-10-31
+---
+
+learntpu.dev hosts **TPU Deep Dive**, a free, self-paced course on Google's Tensor Processing Units for engineers who already know GPUs. It assumes you know transformers, KV caches, CUDA performance and NCCL. It explains TPU hardware, interconnect, sharding, training and inference performance, and the software stack from the ground up.
+
+## How the course is organised
+
+Eleven chapters: five days of two blocks of about 55 minutes each, plus a synthesis chapter comparing TPU, GPU and Trainium architecture. Each chapter has:
+
+- prose with inline citations;
+- interactive explainers;
+- a 12-question quiz;
+- spaced-repetition flashcards;
+- a teach-back checklist;
+- review slides.
+
+There are day exams, a 30-question final exam, and a slide deck for the whole course.
+
+## How it was researched
+
+The spine of the course is *How to Scale Your Model* by Jacob Austin and colleagues at Google DeepMind (jax-ml.github.io/scaling-book). It is supplemented by Google's TPU papers, the Cloud TPU documentation, JAX, XLA and Pallas documentation, the tpu-inference and TorchTPU projects, and NVIDIA and AWS primary sources.
+
+- **Every source is listed** on the [Sources](/sources/) page with its verification status.
+- **Every number is recomputed.** Each figure in the course is computed by a script in the [source repository](https://github.com/jaganathsr/tpu-tutor/tree/main/scripts) rather than copied, so it can be re-run when a new chip is announced.
+- **Uncertain numbers are tagged.** "Provisional" marks figures not in an official specification; "derived" marks figures computed from cited inputs that no single source states; "unverified" marks claims no primary source confirms.
+- **Dates matter.** Sources were accessed in October 2026. TPU hardware and software change quickly; TPU 8t and 8i, for example, had been announced but were not generally available at the time of writing.
+
+## Corrections and suggestions
+
+If you find an error, a broken link or an outdated figure, please [open an issue on GitHub](https://github.com/jaganathsr/tpu-tutor/issues). Corrections that come with a source are especially welcome. The site's code and content are in the [tpu-tutor repository](https://github.com/jaganathsr/tpu-tutor), maintained by GitHub user jaganathsr.
+
+## Independence
+
+learntpu.dev is an independent educational project. It is not affiliated with, sponsored by or endorsed by Google, NVIDIA, Amazon Web Services or any other company whose products it discusses. See the [Terms of use](/terms/) for trademark notices.

@@ -506,3 +506,16 @@ figure.listing pre { font-size: 0.74rem; line-height: 1.45; max-height: 26rem; b
 .compare-table td { vertical-align: middle; }
 .chapter-nav { display: flex; justify-content: space-between; gap: 1.5rem; margin-top: 1.4rem; flex-wrap: wrap; }
 .chapter-nav a:last-child { text-align: right; margin-left: auto; }
+
+/* Footer: three link columns plus a legal line. */
+.site-footer .footer-grid { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 1.5rem 2.5rem; padding-top: 2rem; padding-bottom: 1.2rem; }
+.footer-grid h2 { font-size: var(--fs-xsmall); font-weight: 600; color: var(--ink); margin: 0 0 0.5rem; }
+.footer-grid nav { display: grid; gap: 0.35rem; align-content: start; }
+.footer-grid a { color: var(--ink-2); text-decoration: none; }
+.footer-grid a:hover { color: var(--accent); text-decoration: underline; }
+.footer-brand { font-weight: 600; color: var(--ink); margin-bottom: 0.3rem; }
+.footer-grid p { margin: 0; max-width: 22rem; }
+.site-footer .footer-legal { border-top: 1px solid var(--rule); padding-top: 1rem; display: flex; justify-content: space-between; gap: 1.5rem; flex-wrap: wrap; }
+.footer-legal p { margin: 0; max-width: 56rem; }
+@media (max-width: 760px) { .site-footer .footer-grid { grid-template-columns: 1fr 1fr; } .footer-grid > div:first-child { grid-column: 1 / -1; } }
+.site-page h2 { font-size: var(--fs-h3); }

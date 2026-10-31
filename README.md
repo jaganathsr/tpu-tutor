@@ -105,7 +105,7 @@ What the build does for search:
 
 - **Per-page metadata:** every chapter is a prerendered page with its full text in the HTML, plus a `<title>`, a meta description (the chapter's `description`), a canonical URL, Open Graph and Twitter card tags, and schema.org JSON-LD (`Course` on the home page; `LearningResource` and `BreadcrumbList` on chapters).
 - **Noindex app pages:** quiz, flashcard, teach-back, review, exam, slide and data pages are prerendered with `noindex`.
-- **Sitemap:** `sitemap.xml` lists the 13 indexable URLs.
+- **Sitemap:** `sitemap.xml` lists the 16 indexable URLs (home, Sources, About, Privacy, Terms and 11 chapters).
 - **Share image:** `public/og.png`, rendered from `scripts/og-card.html`; the re-render command is in that file.
 - **Code splitting:** each chapter's content is its own JavaScript chunk.
 

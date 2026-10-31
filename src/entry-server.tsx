@@ -3,7 +3,7 @@
 import { renderToString } from 'preact-render-to-string';
 import { App } from './app';
 import { setSsrPath } from './lib/router';
-import { chapters, courseInfo, examDefs, preloadForPath } from './lib/content';
+import { chapters, courseInfo, examDefs, preloadForPath, sitePages } from './lib/content';
 
 export const preload = preloadForPath;
 
@@ -44,6 +44,9 @@ export function routes(): RouteMeta[] {
       kind: 'page',
     },
   ];
+  for (const [slug, p] of Object.entries(sitePages)) {
+    out.push({ path: `/${slug}`, title: `${p.title} | ${site}`, description: p.description, index: true, kind: 'page' });
+  }
   for (const c of chapters.filter((x) => x.written)) {
     out.push({
       path: `/ch/${c.id}`,

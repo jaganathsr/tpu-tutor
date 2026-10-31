@@ -5,6 +5,8 @@ import { Home } from './pages/Home';
 import { ChapterPage } from './pages/Chapter';
 import { Data, Exam, Exams, Review, Sources } from './pages/Other';
 import { SlidesPage } from './pages/Slides';
+import { SitePage } from './pages/SitePage';
+import { sitePages } from './lib/content';
 
 function ThemeToggle() {
   const s = useStore();
@@ -44,6 +46,7 @@ export function App() {
   else if (section === 'exam' && parts[1]) page = <Exam id={parts[1]} />;
   else if (section === 'sources') page = <Sources />;
   else if (section === 'data') page = <Data />;
+  else if (sitePages[section] && !parts[1]) page = <SitePage slug={section} />;
   else
     page = (
       <div class="page narrow">
@@ -77,9 +80,38 @@ export function App() {
       </header>
       {page}
       <footer class="site-footer">
-        <div class="inner">
-          <span>Sources accessed 2026-10-23. Numbers marked provisional, derived or unverified are explained where they appear.</span>
-          <a href={href('/data')}>Your data</a>
+        <div class="inner footer-grid">
+          <div>
+            <div class="footer-brand">TPU Deep Dive</div>
+            <p>A free course on TPU hardware and software for GPU engineers.</p>
+          </div>
+          <nav aria-label="Course">
+            <h2>Course</h2>
+            <a href={href('/')}>Course map</a>
+            <a href={href('/slides/all/0')}>Slides</a>
+            <a href={href('/exams')}>Exams</a>
+            <a href={href('/review')}>Review flashcards</a>
+          </nav>
+          <nav aria-label="About the site">
+            <h2>About</h2>
+            <a href={href('/about')}>About</a>
+            <a href={href('/sources')}>Sources</a>
+            <a href={href('/privacy')}>Privacy policy</a>
+            <a href={href('/terms')}>Terms of use</a>
+          </nav>
+          <nav aria-label="Project">
+            <h2>Project</h2>
+            <a href="https://github.com/jaganathsr/tpu-tutor" rel="noopener">Source on GitHub</a>
+            <a href="https://github.com/jaganathsr/tpu-tutor/issues" rel="noopener">Report an error</a>
+            <a href={href('/data')}>Your data</a>
+          </nav>
+        </div>
+        <div class="inner footer-legal">
+          <p>
+            An independent educational project, not affiliated with or endorsed by Google, NVIDIA or AWS. Product names are trademarks of their owners.
+            Sources accessed October 2026; figures marked provisional, derived or unverified are explained where they appear.
+          </p>
+          <p>© 2026 learntpu.dev</p>
         </div>
       </footer>
     </>
