@@ -118,7 +118,7 @@ export function Home() {
               return (
                 <li>
                   <a href={href(`/exam/${e.id}`)}>{e.title}</a>
-                  <span class="meta">{att.length ? `best ${Math.round(best * 100)}%, ${att.length} attempts` : `${e.count} questions`}</span>
+                  <span class="meta">{att.length ? `best ${Math.round(best * 100)}%, ${att.length} attempts` : `${e.count + (e.earlier ?? 0)} questions`}</span>
                 </li>
               );
             })}
