@@ -1,0 +1,91 @@
+<Slide title="Python to MXU">
+
+1. **jaxpr:** JAX's traced program, global shapes.
+2. **StableHLO:** platform-independent MLIR, with `sdy.sharding` annotations.
+3. **HLO and XLA passes:** partitioning, fusion, layout, HBM↔VMEM placement, scheduling.
+4. **LLO:** programs DMAs, systolic pushes and units directly. Closed, in libtpu.
+5. **Machine code** in instruction memory.
+
+Pallas enters at stage 3 as a custom call, compiled by Mosaic.
+
+</Slide>
+
+<Slide title="One sharded MLP, compiled (real output, CPU, 2×2 mesh)">
+
+<Listing src="ch09/3_compiled_hlo.txt" title="gelu(x @ w1) @ w2 with w1 P(None,'model'), w2 P('model',None): per-device shapes and one all-reduce" />
+
+</Slide>
+
+<Slide title="What you control">
+
+<Cols>
+<div>
+
+**You control**
+
+- Shardings and `with_sharding_constraint`
+- Layouts (`AUTO`)
+- Remat policy, buffer donation
+- XLA flags via `LIBTPU_INIT_ARGS`
+- Pallas kernels
+
+</div>
+<div>
+
+**You do not**
+
+- TPU code generation
+- VLIW scheduling
+- Fusion beyond flags
+- VMEM inside fusions
+
+</div>
+</Cols>
+
+</Slide>
+
+<Slide title="Three sharding modes">
+
+| Mode | View | Collectives |
+|---|---|---|
+| Auto | global | compiler inserts; steer with constraints ("tickling", about 60% of the work) |
+| Explicit | global; `float32[8@X,512@Y]` | compiler inserts; ambiguous ops must give `out_sharding` |
+| Manual, `jax.shard_map` | per device | you write psum, all_gather, ppermute |
+
+Shardy has been the default propagator since JAX 0.7.0.
+
+</Slide>
+
+<Slide title="Not CUDA Graphs">
+
+- CUDA Graph: replay compiled kernels, less launch overhead, no cross-kernel optimization.
+- Inductor: fuses per captured graph.
+- XLA: one program per step. Fusion, every layout, VMEM placement and collective timing chosen together.
+- Price: static shapes. A new shape means a compile, not a slower kernel.
+
+</Slide>
+
+<Slide title="TorchTPU">
+
+- `PrivateUse1` backend, `torch.device("tpu")`, plain tensors.
+- Each ATen op becomes a deferred StableHLO builder; views and in-place ops are emulated.
+- **Modes:** strict eager (per op), debug, fused eager (per region), `torch.compile` (FX graph to XLA, no Inductor).
+- 3-tier compile cache; PjRT and libtpu; async dispatch.
+- `tpu_dist`: DDP, FSDP2, DTensor; collectives are StableHLO, no NCCL.
+- **SPMD handshake:** reconciles rank-dependent PyTorch code with XLA's SPMD collectives.
+- Pallas via `torch.tpu.pallas.jax_op`. Qwen3-MoE-235B on 8,192 v7 chips at 27.1% MFU.
+
+</Slide>
+
+<Slide title="Four ways PyTorch reaches a TPU">
+
+| | Tensor | Capture | To XLA |
+|---|---|---|---|
+| PyTorch/XLA (deprecated) | lazy `xla` | until `mark_step` | HLO |
+| torchax | subclass over `jax.Array` | `jax.jit` | StableHLO via jaxpr |
+| TorchTPU eager | plain, `PrivateUse1` | per op or region | StableHLO |
+| TorchTPU `torch.compile` | plain | Dynamo FX | StableHLO per graph |
+
+AWS did the same: TorchNeuron (`PrivateUse1`), compiled by neuronx-cc instead of XLA.
+
+</Slide>

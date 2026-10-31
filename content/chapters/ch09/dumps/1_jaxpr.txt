@@ -1,0 +1,18 @@
+{ lambda ; a:bf16[8,512] b:bf16[512,2048] c:bf16[2048,512]. let
+    d:bf16[8,2048] = dot_general[
+      dimension_numbers=(([1], [0]), ([], []))
+      preferred_element_type=bfloat16
+    ] a b
+    e:bf16[8,2048] = integer_pow[y=3] d
+    f:bf16[8,2048] = mul 0.044677734375:bf16[] e
+    g:bf16[8,2048] = add d f
+    h:bf16[8,2048] = mul 0.796875:bf16[] g
+    i:bf16[8,2048] = tanh h
+    j:bf16[8,2048] = add 1.0:bf16[] i
+    k:bf16[8,2048] = mul 0.5:bf16[] j
+    l:bf16[8,2048] = mul d k
+    m:bf16[8,512] = dot_general[
+      dimension_numbers=(([1], [0]), ([], []))
+      preferred_element_type=bfloat16
+    ] l c
+  in (m,) }

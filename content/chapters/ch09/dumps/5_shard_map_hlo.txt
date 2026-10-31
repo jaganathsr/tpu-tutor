@@ -1,0 +1,6 @@
+ENTRY %main.0_spmd (param.2: bf16[4,256], param.3: bf16[256,512]) -> bf16[4,512] {
+  %param.2 = bf16[4,256]{1,0} parameter(0), sharding={devices=[2,2]<=[4]}, metadata={op_name="a_blk"}
+  %param.3 = bf16[256,512]{1,0} parameter(1), sharding={devices=[2,1,2]<=[2,2]T(1,0) last_tile_dim_replicate}, metadata={op_name="b_blk"}
+  %dot_general.3 = f32[4,512]{1,0} dot(%wrapped_convert, %wrapped_convert.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}, metadata={op_name="jit(matmul_psum)/shard_map/dot_general" stack_frame_id=2}
+  %psum_invariant.8 = f32[4,512]{1,0} all-reduce(%dot_general.3), channel_id=1, replica_groups={{0,1},{2,3}}, use_global_device_ids=true, to_apply=%region_0.0_promoted, metadata={op_name="jit(matmul_psum)/shard_map/psum_invariant" stack_frame_id=3}
+  ROOT %wrapped_convert.2 = bf16[4,512]{1,0} fusion(%psum_invariant.8), kind=kLoop, calls=%wrapped_convert_computation.2, metadata={op_name="jit(matmul_psum)/shard_map/psum_invariant" stack_frame_id=3}

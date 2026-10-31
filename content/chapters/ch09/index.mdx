@@ -1,0 +1,191 @@
+---
+objectives:
+  - I can trace a function from Python through jaxpr, StableHLO, HLO and XLA's passes to LLO and TPU instructions, and dump each stage.
+  - I can say what I control on TPU — shardings, constraints, layouts, remat, donation, flags and Pallas — and what I do not.
+  - I can explain Shardy against GSPMD, compare JAX's three sharding modes (auto, explicit, manual shard_map), and say when to drop to each.
+  - I can compare XLA whole-program compilation with CUDA Graphs and torch.compile with Inductor.
+  - I can explain TorchTPU in detail — the PrivateUse1 backend, deferred StableHLO ops, its three eager modes, torch.compile without Inductor, the compile cache, tpu_dist and the SPMD handshake, and Pallas through jax_op.
+  - I can contrast TorchTPU with JAX, torchax and PyTorch/XLA, and the TPU stack with AWS's Neuron stack.
+teachback:
+  - A CUDA engineer says 'XLA is just CUDA Graphs.' Correct them in three sentences.
+  - Draw how y = model(x) reaches the TPU under JAX jit, torchax, TorchTPU strict eager and TorchTPU torch.compile.
+  - Why did TorchTPU need an 'SPMD handshake' that JAX never needed?
+  - XLA inserted a giant AllGather you did not expect. What are your three options, from least to most effort?
+sources:
+  - { id: SB9, anchor: "#a-thousand-foot-view-of-the-tpu-software-stack", label: "The TPU software stack" }
+  - { id: SB10, anchor: "#how-does-parallelism-work-in-jax", label: "Auto, explicit, manual" }
+  - { id: J-shard }
+  - { id: J-jaxpr }
+  - { id: J-aot }
+  - { id: J-log, label: "Shardy default 0.7.0; jax.shard_map 0.8.0" }
+  - { id: X-arch }
+  - { id: X-passes }
+  - { id: X-dumps }
+  - { id: X-flags }
+  - { id: X-shardy-jax }
+  - { id: P-GSPMD, label: "§3–4" }
+  - { id: N-graphs, label: "§4.2" }
+  - { id: T-how }
+  - { id: T-exec }
+  - { id: T-dist }
+  - { id: T-kern }
+  - { id: T-pt }
+  - { id: T-blog1 }
+  - { id: T-oss }
+  - { id: D-pytorch }
+  - { id: T-xla }
+  - { id: R-torchax }
+  - { id: A-torch }
+  - { id: A-nki }
+---
+
+Everything in Chapters 1–8 assumed the compiler would turn a sharded program into well-scheduled MXU work, DMAs and collectives. This chapter opens that box. It follows a small sharded MLP through every stage, using real compiler output, then covers the two front ends that feed the same compiler: JAX and TorchTPU.
+
+## The stages
+
+The Scaling Book's summary of the TPU stack <Cite id="SB9" at="#a-thousand-foot-view-of-the-tpu-software-stack" />:
+
+1. **Python and JAX** trace a function into a **jaxpr**, JAX's own intermediate form.
+2. `jax.jit` lowers the jaxpr to **StableHLO**, a versioned, platform-independent MLIR dialect. Sharding annotations travel with it.
+3. **XLA** converts StableHLO to **HLO** and runs its passes:
+   - sharding propagation and SPMD partitioning;
+   - fusion;
+   - layout assignment;
+   - memory-space assignment between HBM and VMEM;
+   - scheduling.
+   The optimized HLO is what a profile shows.
+4. The TPU backend lowers HLO to **LLO**, a low-level IR that programs the TensorCore directly: copies between memories, pushes into the systolic arrays, DMA scheduling.
+5. LLO becomes machine code, loaded into the TensorCore's instruction memory.
+
+Pallas kernels enter as custom calls at stage 3 and are compiled by Mosaic (Chapter 10). The TPU backend of XLA, stages 4–5, ships in the closed-source `libtpu` <Cite id="X-arch" />.
+
+Each stage can be printed: `jax.make_jaxpr(f)(*args)`, `jax.jit(f).lower(*args).as_text()` for StableHLO, and `.compile().as_text()` for optimized HLO <Cite id="J-aot" />. `XLA_FLAGS=--xla_dump_to=DIR` writes every HLO pass to disk <Cite id="X-dumps" />.
+
+## One MLP, every stage
+
+The listings below come from running `scripts/ch09_dump.py` with JAX 0.8.2 on CPU with 4 simulated devices, on a 2×2 mesh named `('data', 'model')`. The function is `gelu(x @ w1) @ w2` with x sharded `P('data', None)`, w1 sharded `P(None, 'model')` and w2 sharded `P('model', None)`: Megatron tensor parallelism over `model`, data parallelism over `data`. TPU output differs in layout tiling, fusion choices and memory-space annotations. The structure is the same.
+
+<Listing src="ch09/1_jaxpr.txt" title="Stage 1: jaxpr. Global shapes; GELU expanded into elementwise primitives; no sharding yet." />
+
+<Listing src="ch09/2_stablehlo.txt" title="Stage 2: StableHLO, filtered to the relevant lines. The sdy.sharding annotations are Shardy's: each argument's per-dimension mesh axes." />
+
+<Listing src="ch09/3_compiled_hlo.txt" title="Stage 3: compiled HLO after SPMD partitioning, entry computation only. Shapes are now per device ([4,512], [512,1024]); XLA inserted one all-reduce after the second dot." />
+
+Read the third listing as Chapter 5 would:
+
+- The first matmul is case 1: x is sharded on its batch rows, w1 on its output columns, and there is no communication.
+- The second is case 3: both operands are sharded on the contracting dimension over `model`, so each device holds a partial sum and XLA adds an `all-reduce`.
+- `replica_groups=[2,2]<=[4]` describes which devices reduce together: the two `model` peers in each `data` row.
+- The `convert` ops to f32 are a CPU artifact; TPU MXUs take bf16 and accumulate in f32 directly.
+
+## What you control, and what you do not
+
+**You control:**
+
+- **Shardings** of inputs and outputs, and intermediate constraints via `jax.lax.with_sharding_constraint`. The Scaling Book calls adding constraints to steer propagation "compiler tickling", and estimates it is "about 60% of JAX parallel programming in the automatic partitioning world". The usual symptom of bad propagation is an unexpected AllGather taking most of a profile <Cite id="SB10" at="#auto-sharding-mode" />.
+- **Layouts.** Passing `AUTO` input layouts to `jax.jit` lets XLA pick, avoiding relayout copies <Cite id="SB9" at="#how-to-read-an-xla-op" />.
+- **Rematerialization** policies via `jax.checkpoint`.
+- **Buffer donation** via `donate_argnums`, which lets outputs reuse input buffers. This is how KV caches update without copies.
+- **XLA flags**, passed on TPU through the `LIBTPU_INIT_ARGS` environment variable, the convention MaxText and Google's recipes use <Unverified />. Examples:
+  - the latency-hiding scheduler (`xla_tpu_enable_latency_hiding_scheduler`);
+  - async collective fusion;
+  - the windowed-einsum threshold for collective matmul;
+  - scoped VMEM limits (`xla_tpu_scoped_vmem_limit_kib`);
+  - memory-space-assignment tuning.
+
+  The OpenXLA flags guide lists them <Cite id="X-flags" />.
+- **Pallas kernels**, for anything the compiler does not generate well (Chapter 10).
+
+**You do not control:** TPU code generation, fusion decisions beyond what flags expose, VLIW bundle scheduling and VMEM allocation inside fusions. The backend is closed, so these are visible only in their effects, through profiles and HLO dumps.
+
+<GpuAnalogy title="GPU analogy: CUDA Graphs and torch.compile">
+<p>A CUDA Graph records a DAG of already-compiled kernels and their launches, then replays it. That removes CPU launch overhead, but it does no cross-kernel optimization; changing the graph's structure requires re-instantiation <Cite id="N-graphs" s="§4.2" />. `torch.compile` with Inductor goes further: it fuses operations and generates Triton kernels for each graph it captures.</p>
+<p>XLA compiles the whole step as one program. In one optimization problem it chooses fusion, the layout of every array, which arrays sit in VMEM and when, and when each collective starts relative to compute. The result is closer to "CUDA Graph plus Inductor plus a global memory planner plus collective scheduling" in one pass.</p>
+</GpuAnalogy>
+
+<AnalogyBreaks>
+<p>The cost of whole-program compilation is that the whole program must be known. Shapes are compile-time constants. Data-dependent control flow becomes `lax.cond` or `while_loop` with fixed shapes. A shape not seen before means minutes of compilation rather than a slower kernel. On a GPU, eager mode is the fallback for whatever a graph cannot capture. On a TPU with JAX there is no eager fallback in production; TorchTPU's eager modes, below, are the first serious attempt at one.</p>
+</AnalogyBreaks>
+
+## Sharding: GSPMD, Shardy and three modes
+
+**GSPMD** introduced the model JAX still uses <Cite id="P-GSPMD" s="§3–4" />. You write a single-device program and annotate a few tensors with shardings. The compiler propagates shardings to every other tensor, then rewrites the program into one per-device program with collectives inserted. The paper reported 50–62% compute utilization up to 2,048 TPUv3 cores.
+
+**Shardy** replaced GSPMD's propagation as JAX's default in version 0.7.0 <Cite id="J-log" />. It is MLIR-based, uses named mesh axes instead of device-assignment tensors, and distinguishes open dimensions (which propagation may shard further) from closed ones. It also adds propagation priorities. Its annotations are the `sdy.sharding` attributes in the StableHLO listing above <Cite id="X-shardy-jax" />.
+
+JAX now offers three ways to say how a program is sharded <Cite id="SB10" at="#how-does-parallelism-work-in-jax" /> <Cite id="J-shard" />:
+
+| Mode | View of arrays | You specify | Collectives |
+|---|---|---|---|
+| Auto (`AxisType.Auto`) | global | input and output shardings, optional constraints | inserted by the compiler |
+| Explicit (`AxisType.Explicit`, "sharding in types") | global; `jax.typeof(x)` shows `float32[8@X,512@Y]` | sharding is part of each array's type; ambiguous ops must say `out_sharding` | inserted by the compiler, as JAX's rules specify |
+| Manual (`jax.shard_map`) | per device | `in_specs`, `out_specs` | written by you: `psum`, `all_gather`, `ppermute`, `all_to_all` |
+
+Explicit mode moves sharding errors from profile time to trace time. Multiplying arrays whose contracting dimensions are both sharded is ambiguous: the result could be AllReduced or ReduceScattered. JAX refuses to guess:
+
+<Listing src="ch09/4_explicit_error.txt" title="Explicit mode on a 2×2 mesh: jnp.dot of P('X','Y') by P('Y', None). The error is raised while tracing, before compilation." />
+
+Manual mode is the escape hatch. Inside `jax.shard_map`, each device sees its own block and every collective is explicit. The compiled HLO then contains exactly the collectives you wrote:
+
+<Listing src="ch09/5_shard_map_hlo.txt" title="shard_map with a psum over 'model': one all-reduce, replica groups {0,1} and {2,3}." />
+
+`jax.shard_map` became the public API in JAX 0.8.0, replacing `jax.experimental.shard_map` <Cite id="J-log" />. The Scaling Book's collective matmul (Chapter 5) is written in it.
+
+## TorchTPU
+
+TorchTPU is Google's native PyTorch backend for TPUs, built with Meta's PyTorch team. It was described in April 2026 and open-sourced on 2026-10-20 <Cite id="T-blog1" /> <Cite id="T-oss" />. Google's docs state that "TorchTPU replaces PyTorch/XLA" <Cite id="D-pytorch" />, and PyTorch/XLA's repository is archived on 2026-11-15 <Cite id="T-xla" />.
+
+### Where it plugs in
+
+TorchTPU registers as an out-of-tree PyTorch backend on the `PrivateUse1` dispatch key, renamed `tpu`. Importing it enables `torch.device("tpu")`. Tensors are ordinary PyTorch tensors, with "no subclasses, no wrappers" <Cite id="T-how" />. That is the main difference from torchax, whose tensors are a subclass wrapping JAX arrays, and from PyTorch/XLA, whose `xla` device held lazy tensors.
+
+### How an op executes
+
+When an ATen op dispatches to `tpu`, TorchTPU does not run it. It creates a **deferred op** holding a **StableHLO builder**; `aten::mul` becomes a `stablehlo.multiply` under construction. The returned tensor's storage points at it. PyTorch semantics that StableHLO lacks are emulated: views and in-place mutation are handled by decomposing and inverting views, since StableHLO is single-assignment <Cite id="T-how" />.
+
+When deferred ops are compiled and run depends on the mode <Cite id="T-exec" />:
+
+| Mode | Behaviour | Use |
+|---|---|---|
+| Strict eager (default) | each op compiled on its own at `-O1` and dispatched asynchronously | correctness, debugging, unchanged PyTorch code |
+| Debug eager (`TORCH_TPU_LAUNCH_BLOCKING=1`) | host waits after every op | locating the op that fails |
+| Fused eager (`TORCH_TPU_DEFER_AND_FUSE=1`) | ops accumulate until a sync point or a repeated loop is detected, then compile as one `-O2` graph | eager code with much of compiled performance |
+| `torch.compile(model, backend="tpu")` | TorchDynamo captures an FX graph, emitted as one StableHLO program and compiled by XLA | production |
+
+Two details matter for performance reasoning:
+
+- **No Inductor.** TorchTPU states that it "does not use TorchInductor". The FX graph goes to XLA, so the fusion and scheduling of this chapter apply unchanged <Cite id="T-exec" />.
+- **Fused eager's speedup is reported inconsistently.** The launch blog says 50% to more than 100% over strict eager; the docs say up to 50% <Cite id="T-blog1" /> <Cite id="T-exec" />.
+
+Execution goes through PjRT and libtpu on a background thread, so errors can surface after the op that caused them. Compiled programs are cached at three levels: in the process, in shared memory on the machine, and in a remote persistent store. Keys cover the graph, shapes, compiler options and library versions. A first compile can take minutes; the caches make it a one-time cost <Cite id="T-exec" />.
+
+### Distributed: the SPMD handshake
+
+TorchTPU provides a `tpu_dist` process group. DDP, FSDP2, DTensor and SimpleFSDP run on it, and `torch.tpu.distributed.topology_aware_mesh()` builds a DeviceMesh aligned with ICI rings. Collectives lower to StableHLO collective ops compiled by XLA, "no separate library like NCCL" <Cite id="T-dist" />.
+
+This creates a problem JAX never had. XLA's collectives assume every device runs the same program (SPMD). PyTorch's distributed model is one process per device, and ordinary PyTorch code often branches on rank: rank 0 logs, or only some ranks do an extra step. That is MPMD. If two ranks compile different programs around a collective, the collective can deadlock or mismatch. TorchTPU's default is to compile collectives in isolation, which is safe but prevents fusing them with neighbouring compute. The **SPMD handshake** lets ranks confirm they are running identical programs before fusing across collectives. It is controlled by `TORCH_TPU_SPMD_HANDSHAKE_STAGE` (`OFF`, `COMPILE_STAGE` or `DISPATCH_STAGE`), and the `@spmd_safe` decorator marks code known to be rank-independent <Cite id="T-dist" />. JAX avoids the problem by construction: one traced program describes all devices.
+
+### Kernels and status
+
+Pallas kernels are registered with `torch.tpu.pallas.jax_op` and called as ordinary ops. The April blog named the API `custom_jax_kernel`, so check the version you install. Tokamax kernels are usable directly, and Helion support is experimental <Cite id="T-kern" />. Google's PyTorch blog reports two results <Cite id="T-pt" />:
+
+- Qwen3-MoE-235B trained on 8,192 TPU v7 chips at 27.1% MFU.
+- A 30B model prefilling at 59% MFU on one chip.
+
+A "52% MFU on 8,192 chips" figure circulating in press coverage does not appear in the primary sources <Unverified />.
+
+### Four ways PyTorch code reaches a TPU
+
+| | PyTorch/XLA (deprecated) | torchax | TorchTPU eager | TorchTPU `torch.compile` |
+|---|---|---|---|---|
+| Tensor type | lazy `xla` tensors | `torch.Tensor` subclass holding a `jax.Array` | plain tensors on `PrivateUse1` | plain tensors |
+| Graph capture | trace until `mark_step` | `jax.jit` traces through `__torch_dispatch__` | none (strict), or deferred regions (fused) | Dynamo FX graph |
+| IR handed to XLA | HLO via lazy IR | StableHLO via jaxpr | StableHLO per op or region | StableHLO per graph |
+| Parallelism | SPMD mode | JAX shardings | `tpu_dist`, DDP, FSDP2, DTensor | same |
+| Kernels | XLA custom calls | Pallas directly | Pallas via `jax_op`, Tokamax | same |
+
+Sources: <Cite id="T-xla" />, <Cite id="R-torchax" />, <Cite id="T-how" />, <Cite id="T-exec" />.
+
+<GpuAnalogy title="Trainium, for comparison">
+<p>AWS took the same route at the same time. Its older PyTorch path, torch-neuronx, used torch-xla's lazy tensors and is now marked legacy. Its replacement, TorchNeuron, is also a `PrivateUse1` backend with eager mode and `torch.compile(backend="neuron")`, in beta since Neuron 2.27 <Cite id="A-torch" />. The difference is the compiler underneath: TorchTPU keeps XLA, while AWS uses its own neuronx-cc, which emits NEFF binaries. Custom kernels are written in NKI and linked into the compiled graph, the counterpart of Pallas custom calls <Cite id="A-nki" />.</p>
+</GpuAnalogy>

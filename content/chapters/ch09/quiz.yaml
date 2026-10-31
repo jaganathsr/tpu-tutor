@@ -1,0 +1,172 @@
+# Chapter 9 quiz.
+- id: ch09-stages
+  type: mcq
+  prompt: "In what order does a jax.jit function pass through these representations on its way to a TPU?"
+  options:
+    - text: "jaxpr → StableHLO → HLO (XLA passes) → LLO → machine code"
+      correct: true
+      why: "JAX traces to jaxpr, lowers to StableHLO, XLA optimizes HLO, and the TPU backend lowers to LLO and instructions."
+    - text: "StableHLO → jaxpr → HLO → PTX"
+      why: "jaxpr comes first; PTX is NVIDIA's IR."
+    - text: "HLO → StableHLO → jaxpr → LLO"
+      why: "That is backwards."
+    - text: "jaxpr → TorchInductor → LLO"
+      why: "Inductor is not part of the JAX or TorchTPU paths."
+  source: "SB9 #a-thousand-foot-view-of-the-tpu-software-stack"
+
+- id: ch09-allreduce
+  type: scenario
+  prompt: "Compiled HLO for gelu(x @ w1) @ w2, with w1 sharded P(None, 'model') and w2 sharded P('model', None), contains exactly one all-reduce, after the second dot. Why there?"
+  options:
+    - text: "The second matmul contracts over the dimension both operands shard on 'model' (case 3), so each device holds a partial sum."
+      correct: true
+      why: "The first matmul shards its output columns over 'model' (case 1, no communication). GELU is elementwise. The second contracts over the sharded dimension."
+    - text: "XLA always reduces after the last op."
+      why: "Collectives appear only where the sharding requires them."
+    - text: "To gather the full weight w2."
+      why: "That would be an all-gather of w2, not an all-reduce of the output."
+    - text: "Because x is sharded over 'data'."
+      why: "Data sharding of x produces no communication in the forward pass."
+  source: "SB10 #auto-sharding-mode"
+
+- id: ch09-tickling
+  type: mcq
+  prompt: "A profile shows an unexpected AllGather taking most of the step under jax.jit auto sharding. What is the first thing to try?"
+  options:
+    - text: "Add jax.lax.with_sharding_constraint on the intermediate to steer propagation."
+      correct: true
+      why: "The book calls this 'compiler tickling'. If it is not enough, use explicit mode or shard_map."
+    - text: "Rewrite the layer in Pallas."
+      why: "Pallas is the last resort, for kernels the compiler cannot produce well, not for sharding propagation."
+    - text: "Increase HBM bandwidth with a flag."
+      why: "No flag changes hardware bandwidth."
+    - text: "Switch to CUDA Graphs."
+      why: "Not applicable on TPU."
+  source: "SB10 #auto-sharding-mode"
+
+- id: ch09-explicit
+  type: mcq
+  prompt: "In explicit sharding mode, jnp.dot of an array sharded P('X','Y') by one sharded P('Y', None) raises an error at trace time. Why?"
+  options:
+    - text: "Both contracting dimensions are sharded on Y, so the result could be AllReduced or ReduceScattered; JAX requires out_sharding instead of guessing."
+      correct: true
+      why: "out_sharding=P('X','Y') induces a ReduceScatter; P('X', None) an AllReduce."
+    - text: "Explicit mode does not support matmul."
+      why: "It does; it requires the output sharding to be unambiguous."
+    - text: "The mesh axes are misspelled."
+      why: "The error message names the ambiguity, not unknown axes."
+    - text: "Explicit mode only runs on TPU."
+      why: "The listing in the chapter was produced on CPU."
+  source: "J-shard"
+
+- id: ch09-shardy
+  type: mcq
+  prompt: "What replaced GSPMD's sharding propagation as JAX's default, and when?"
+  options:
+    - text: "Shardy, an MLIR-based partitioner with named axes, in JAX 0.7.0."
+      correct: true
+      why: "Its sdy.sharding annotations appear in StableHLO. The jax_use_shardy_partitioner flag is now a no-op."
+    - text: "shard_map, in JAX 0.8.0."
+      why: "0.8.0 promoted shard_map to jax.shard_map; that is manual mode, not propagation."
+    - text: "Pathways, in 2022."
+      why: "Pathways is a runtime, not a sharding propagator."
+    - text: "Explicit mode, in JAX 0.9.0."
+      why: "Explicit mode changes the programming model; propagation is still Shardy's."
+  source: "J-log"
+
+- id: ch09-graphs
+  type: mcq
+  prompt: "Which statement correctly contrasts a CUDA Graph with an XLA TPU executable?"
+  options:
+    - text: "A CUDA Graph replays already-compiled kernels with less launch overhead; XLA also chooses fusion, layouts, memory placement and collective scheduling across the whole step."
+      correct: true
+      why: "CUDA Graphs do no cross-kernel optimization; XLA's executable is a whole-program compilation."
+    - text: "They are equivalent."
+      why: "Only the launch-overhead part is shared."
+    - text: "CUDA Graphs fuse kernels; XLA does not."
+      why: "The reverse: fusion is one of XLA's main passes."
+    - text: "XLA executables accept any input shape."
+      why: "XLA compiles for exact shapes; a new shape means a recompile."
+  source: "N-graphs"
+
+- id: ch09-shardmap-mean
+  type: mcq
+  prompt: "A is f32[S, D] sharded P('X', 'Y'). You want each device to return the mean of its own shard, as an [X, Y] array of means. Which shard_map does it with no communication?"
+  options:
+    - text: "shard_map(lambda a: a.mean(keepdims=True), mesh=mesh, in_specs=P('X','Y'), out_specs=P('X','Y'))"
+      correct: true
+      why: "Each device sees its [S/X, D/Y] block and returns a [1, 1] mean; out_specs stitches them into [X, Y]. The jit equivalent reshapes to (X, S/X, Y, D/Y) and means over axes 1 and 3."
+    - text: "jax.jit(lambda a: a.mean())"
+      why: "That is the global mean: one number, with a reduction across all devices."
+    - text: "shard_map(lambda a: jax.lax.pmean(a.mean(), ('X','Y')), ...)"
+      why: "pmean averages across devices, giving the global mean on every device."
+    - text: "shard_map(lambda a: a.mean(keepdims=True), in_specs=P('X','Y'), out_specs=P())"
+      why: "out_specs=P() claims the result is replicated, but each device's mean differs."
+  adapted_from: SB10 Q1
+  source: "SB10 #worked-problems"
+
+- id: ch09-torchtpu-backend
+  type: mcq
+  prompt: "How does TorchTPU integrate with PyTorch?"
+  options:
+    - text: "As an out-of-tree backend on the PrivateUse1 dispatch key, renamed tpu; tensors are plain torch.Tensors."
+      correct: true
+      why: "'No subclasses, no wrappers.' Each ATen op becomes a deferred op holding a StableHLO builder."
+    - text: "As a torch.Tensor subclass wrapping jax.Array."
+      why: "That is torchax."
+    - text: "Through lazy tensors flushed at mark_step."
+      why: "That is PyTorch/XLA, now deprecated."
+    - text: "Through TorchInductor generating Mosaic code."
+      why: "TorchTPU does not use Inductor."
+  source: "T-how"
+
+- id: ch09-modes
+  type: mcq
+  prompt: "Which TorchTPU mode compiles a Dynamo FX graph into one StableHLO program for XLA?"
+  options:
+    - text: "torch.compile(model, backend='tpu')"
+      correct: true
+      why: "Dynamo captures the graph; it goes to XLA, not to Inductor."
+    - text: "Strict eager"
+      why: "Strict eager compiles each op on its own at -O1."
+    - text: "Fused eager (TORCH_TPU_DEFER_AND_FUSE=1)"
+      why: "Fused eager defers ops until a sync point and compiles that region; it does not use Dynamo."
+    - text: "Debug eager"
+      why: "Debug eager blocks after each op."
+  source: "T-exec"
+
+- id: ch09-handshake
+  type: scenario
+  prompt: "In TorchTPU, a training script has rank-0-only logging code between two layers. Why does this matter for collectives, and what does TorchTPU offer?"
+  options:
+    - text: "XLA collectives assume every device runs the same program; rank-dependent code is MPMD. TorchTPU isolates collectives by default and offers an SPMD handshake to confirm ranks match before fusing."
+      correct: true
+      why: "Controlled by TORCH_TPU_SPMD_HANDSHAKE_STAGE and @spmd_safe. JAX avoids the issue because one traced program describes all devices."
+    - text: "It does not matter; NCCL handles mismatched programs."
+      why: "TorchTPU has no NCCL; collectives are StableHLO ops compiled by XLA."
+    - text: "Logging forces a recompile every step."
+      why: "Logging may add sync points, but the collective-matching issue is the point here."
+    - text: "TorchTPU does not support multi-device training."
+      why: "It supports DDP, FSDP2 and DTensor on the tpu_dist process group."
+  source: "T-dist"
+
+- id: ch09-trainium
+  type: mcq
+  prompt: "What did AWS and Google both do with PyTorch support in 2025–26?"
+  options:
+    - text: "Moved from torch-xla lazy tensors to native PrivateUse1 backends with eager mode and torch.compile (TorchNeuron and TorchTPU)."
+      correct: true
+      why: "Google kept XLA as the compiler; AWS kept neuronx-cc."
+    - text: "Both adopted TorchInductor."
+      why: "TorchTPU explicitly does not use Inductor."
+    - text: "Both dropped PyTorch support for JAX only."
+      why: "Both added native PyTorch backends."
+    - text: "Both moved to NCCL."
+      why: "Neither uses NCCL."
+  source: "A-torch"
+
+- id: ch09-explain
+  type: free
+  prompt: "Draw, in words, how y = model(x) reaches the TPU under JAX jit, torchax, TorchTPU strict eager and TorchTPU torch.compile, and say where each first meets XLA."
+  model_answer: "JAX jit: the Python function is traced once into a jaxpr, lowered to StableHLO with Shardy annotations, and XLA compiles the whole step (partitioning, fusion, layout, memory assignment, scheduling) into one TPU executable. torchax: the PyTorch module runs on torch.Tensor subclasses wrapping jax.Arrays; __torch_dispatch__ turns each ATen op into a jnp call, so under jax.jit it is traced into a jaxpr and follows the JAX path from there. TorchTPU strict eager: tensors are plain torch tensors on the PrivateUse1 'tpu' device; each ATen op becomes a deferred StableHLO builder that is compiled on its own at -O1 and dispatched asynchronously through PjRT, so XLA sees one op at a time (fused eager widens that to regions). TorchTPU torch.compile: Dynamo captures an FX graph, which becomes one StableHLO program per graph compiled by XLA, with no Inductor. All four end in libtpu; they differ in how much of the program XLA sees at once."
+  source: "T-exec"

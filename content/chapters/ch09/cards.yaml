@@ -1,0 +1,85 @@
+# Chapter 9 flashcards.
+- id: ch09-c-stages
+  front: Compilation stages from JAX to TPU?
+  back: "jaxpr → StableHLO (with Shardy annotations) → HLO and XLA passes → LLO → machine code in instruction memory."
+  source: SB9
+- id: ch09-c-dump
+  front: How do you print each stage?
+  back: "jax.make_jaxpr(f)(*args); jax.jit(f).lower(*args).as_text() for StableHLO; .compile().as_text() for optimized HLO; XLA_FLAGS=--xla_dump_to=DIR for every pass."
+  source: J-aot, X-dumps
+- id: ch09-c-passes
+  front: Main XLA passes for TPU?
+  back: "Sharding propagation and SPMD partitioning, fusion, layout assignment, memory-space assignment (HBM↔VMEM), latency-hiding scheduling."
+  source: SB9, X-flags
+- id: ch09-c-control
+  front: What can you control from JAX on TPU?
+  back: "Shardings and constraints, layouts (AUTO), remat policy, buffer donation, XLA flags (LIBTPU_INIT_ARGS), Pallas kernels."
+  source: SB10, X-flags
+- id: ch09-c-nocontrol
+  front: What can you not control?
+  back: "TPU code generation, VLIW scheduling, fusion choices beyond flags, VMEM allocation inside fusions. The backend is in closed libtpu."
+  source: X-arch
+- id: ch09-c-tickle
+  front: What is 'compiler tickling'?
+  back: "Adding with_sharding_constraint to steer propagation. The book estimates it is about 60% of JAX parallel programming in auto mode."
+  source: SB10
+- id: ch09-c-gspmd
+  front: GSPMD in one sentence?
+  back: "Annotate a few tensors in a single-device program; the compiler propagates shardings and rewrites it into a per-device program with collectives. 50–62% utilization on 2,048 TPUv3 cores."
+  source: P-GSPMD
+- id: ch09-c-shardy
+  front: What is Shardy?
+  back: "MLIR-based sharding propagation with named axes, open and closed dimensions and priorities; JAX default since 0.7.0. Annotations appear as sdy.sharding."
+  source: X-shardy-jax, J-log
+- id: ch09-c-modes
+  front: JAX's three sharding modes?
+  back: "Auto: global view, compiler inserts collectives. Explicit: sharding in types, ambiguous ops need out_sharding. Manual (jax.shard_map): per-device view, you write collectives."
+  source: SB10
+- id: ch09-c-explicit-err
+  front: What does explicit mode do with an ambiguous sharded contraction?
+  back: "Raises a trace-time error asking for out_sharding: P('X','Y') gives a ReduceScatter, P('X', None) an AllReduce."
+  source: SB10
+- id: ch09-c-graphs
+  front: CUDA Graph against XLA executable?
+  back: "A CUDA Graph replays compiled kernels with less launch overhead, no cross-kernel optimization. XLA compiles the whole step: fusion, layouts, memory placement, collective schedule."
+  source: N-graphs
+- id: ch09-c-tt-key
+  front: How does TorchTPU plug into PyTorch?
+  back: "Out-of-tree backend on PrivateUse1, renamed tpu: torch.device('tpu'), plain tensors, no subclasses."
+  source: T-how
+- id: ch09-c-tt-deferred
+  front: What happens when an ATen op runs on TorchTPU?
+  back: "It becomes a deferred op holding a StableHLO builder. Views and in-place mutation are emulated over single-assignment StableHLO."
+  source: T-how
+- id: ch09-c-tt-modes
+  front: TorchTPU execution modes?
+  back: "Strict eager (per-op -O1, default); debug eager (blocking); fused eager (defer until sync, compile region at -O2); torch.compile(backend='tpu') (Dynamo graph to XLA)."
+  source: T-exec
+- id: ch09-c-tt-inductor
+  front: Does TorchTPU use TorchInductor?
+  back: "No. The FX graph becomes one StableHLO program compiled by XLA."
+  source: T-exec
+- id: ch09-c-tt-cache
+  front: TorchTPU compile cache?
+  back: "Three tiers: process, machine shared memory, remote persistent. Keyed by graph, shapes, options and library versions."
+  source: T-exec
+- id: ch09-c-tt-dist
+  front: TorchTPU distributed support?
+  back: "tpu_dist process group; DDP, FSDP2, DTensor, SimpleFSDP; topology_aware_mesh; collectives are StableHLO ops, no NCCL."
+  source: T-dist
+- id: ch09-c-handshake
+  front: Why does TorchTPU need an SPMD handshake?
+  back: "XLA collectives assume identical programs on all devices; PyTorch code can branch on rank (MPMD). The handshake confirms ranks match before fusing around collectives."
+  source: T-dist
+- id: ch09-c-tt-results
+  front: TorchTPU results in Google's PyTorch blog?
+  back: "Qwen3-MoE-235B on 8,192 v7 chips at 27.1% MFU; a 30B model prefilling at 59% MFU on one chip. A '52% MFU' press figure is unverified."
+  source: T-pt
+- id: ch09-c-four-paths
+  front: Four ways PyTorch reaches a TPU?
+  back: "PyTorch/XLA (lazy tensors, deprecated); torchax (subclass over JAX); TorchTPU eager (PrivateUse1, per-op or fused); TorchTPU torch.compile (Dynamo to XLA)."
+  source: T-xla, R-torchax, T-exec
+- id: ch09-c-neuron
+  front: AWS's equivalent of TorchTPU?
+  back: "TorchNeuron: PrivateUse1 backend, eager and torch.compile(backend='neuron'), beta in Neuron 2.27. Compiles with neuronx-cc to NEFF; NKI kernels."
+  source: A-torch

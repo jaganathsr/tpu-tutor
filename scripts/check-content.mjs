@@ -9,7 +9,8 @@ const BANNED = [
   'fascinating', 'powerful', 'elegant', 'seamless', 'revolutionary', 'imagine',
   'great job', 'not quite', 'well done',
 ];
-const EMOJI = /\p{Extended_Pictographic}/u;
+// Pictographic characters, excluding the plain arrows block (U+2190–21FF).
+const EMOJI = /(?![\u2190-\u21FF])\p{Extended_Pictographic}/u;
 const sources = JSON.parse(readFileSync('src/generated/sources.json', 'utf8'));
 const course = load(readFileSync('content/course.yaml', 'utf8'));
 

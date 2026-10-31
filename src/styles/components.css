@@ -494,3 +494,10 @@ body.deck-mode .site-footer { display: none; }
 .slide-body .ix { border: 0; padding: 0; }
 .slide-body .ix svg { max-height: 38cqw; width: auto; max-width: 100%; margin: 0 auto; }
 .slide-body .ix .ix-note { display: none; }
+
+/* Generated compiler listings: no wrapping, scroll sideways, small type. */
+figure.listing { margin: 1.4rem 0 1.6rem; }
+figure.listing figcaption { font-family: var(--font-ui); font-size: var(--fs-xsmall); color: var(--ink-2); margin-bottom: 0.4rem; }
+figure.listing pre { font-size: 0.74rem; line-height: 1.45; max-height: 26rem; border-left: 3px solid var(--dayc, var(--accent-strong)); }
+.slide-body figure.listing pre { font-size: 1.02cqw; max-height: 32cqw; white-space: pre; }
+.slide-body figure.listing figcaption { font-size: 1.3cqw; }

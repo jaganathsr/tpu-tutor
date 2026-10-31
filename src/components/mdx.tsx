@@ -60,6 +60,20 @@ export function AnalogyBreaks({ children }: { children: ComponentChildren }) {
   );
 }
 
+const LISTINGS = import.meta.glob<string>('../../content/chapters/*/dumps/*.txt', { query: '?raw', import: 'default', eager: true });
+
+/** A generated listing from content/chapters/<ch>/dumps/, e.g. src="ch09/1_jaxpr.txt". */
+export function Listing({ src, title }: { src: string; title: string }) {
+  const [ch, file] = src.split('/');
+  const text = LISTINGS[`../../content/chapters/${ch}/dumps/${file}`];
+  return (
+    <figure class="listing">
+      <figcaption>{title}</figcaption>
+      <pre><code>{text ?? `missing listing ${src}`}</code></pre>
+    </figure>
+  );
+}
+
 /** Lets a table or figure extend into the margin column on wide screens. */
 export function Wide({ children }: { children: ComponentChildren }) {
   return <div class="wide">{children}</div>;
@@ -180,6 +194,7 @@ export const mdxComponents = {
   AnalogyBreaks,
   Note,
   Wide,
+  Listing,
   Unverified,
   Provisional,
   Derived,

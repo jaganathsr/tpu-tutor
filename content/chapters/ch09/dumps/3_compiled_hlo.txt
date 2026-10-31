@@ -1,0 +1,8 @@
+ENTRY %main.0_spmd (param: bf16[4,512], param.1: bf16[512,1024], param.2: bf16[1024,512]) -> bf16[4,512] {
+  %param = bf16[4,512]{1,0} parameter(0), sharding={devices=[2,1,2]<=[4] last_tile_dim_replicate}, metadata={op_name="x"}
+  %param.1 = bf16[512,1024]{1,0} parameter(1), sharding={devices=[1,2,2]<=[2,2]T(1,0) last_tile_dim_replicate}, metadata={op_name="w1"}
+  %param.2 = bf16[1024,512]{1,0} parameter(2), sharding={devices=[2,1,2]<=[2,2]T(1,0) last_tile_dim_replicate}, metadata={op_name="w2"}
+  %dot = f32[4,1024]{1,0} dot(%wrapped_convert, %wrapped_convert.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}, metadata={op_name="jit(mlp)/dot_general" stack_frame_id=2}
+  %dot.1 = f32[4,512]{1,0} dot(%convert_convert_fusion, %wrapped_convert.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}, metadata={op_name="jit(mlp)/dot_general" stack_frame_id=3}
+  %all-reduce.1 = f32[4,512]{1,0} all-reduce(%dot.1), channel_id=1, replica_groups=[2,2]<=[4], use_global_device_ids=true, to_apply=%add.clone_promoted, metadata={op_name="jit(mlp)/dot_general" stack_frame_id=3}
+  ROOT %wrapped_convert.3 = bf16[4,512]{1,0} fusion(%all-reduce.1), kind=kLoop, calls=%wrapped_convert_computation.3, metadata={op_name="jit(mlp)/dot_general" stack_frame_id=3}
