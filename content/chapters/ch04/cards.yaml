@@ -1,0 +1,81 @@
+# Chapter 4 flashcards.
+- id: ch04-c-einsum
+  front: FLOPs of a general contraction?
+  back: "2 × the product of all distinct dimensions, counting batch and contracting dimensions once. $A[N,P] \\cdot B[P,M]$ is $2NPM$."
+  source: SB4
+- id: ch04-c-6nd
+  front: Training FLOPs rule of thumb, and with block remat?
+  back: "6 × parameters × tokens (2 forward, 4 backward). About 8× with block rematerialization."
+  source: SB4
+- id: ch04-c-mlp
+  front: Parameters and training FLOPs of a gated MLP per layer?
+  back: "$3DF$ parameters; $18BTDF$ training FLOPs."
+  source: SB4
+- id: ch04-c-attn-params
+  front: Parameters of GQA attention projections per layer?
+  back: "$2DH(N + K)$: Q and O over N heads, K and V over K heads."
+  source: SB4
+- id: ch04-c-llama70
+  front: LLaMA-3-70B shape and parameter split?
+  back: "L 80, D 8,192, F 28,672, N 64, K 8, H 128, V 128,256. MLP 56.4B, attention 12.1B, vocab 2.1B; total 70.5B."
+  source: SB6
+- id: ch04-c-llama-days
+  front: Time to train LLaMA-3-70B on 15T tokens at 40% MFU?
+  back: "6.3e24 FLOPs: about 45 days on a v5p pod (8,960 chips), about 9 days on an Ironwood pod (9,216 chips)."
+  source: SB6, derived
+- id: ch04-c-attn-share
+  front: When do attention FLOPs equal the weight-matmul FLOPs?
+  back: "At $T = 8D$ (for $F = 4D$, $NH = D$): 65,536 tokens for D = 8,192."
+  source: SB4
+- id: ch04-c-attn-ai
+  front: Arithmetic intensity of GQA attention?
+  back: "$TSG/(TG + S)$. Prefill ($S = T$): $TG/(G+1)$, grows with T. Decode ($T = 1$): about G. Batch cancels."
+  source: SB4 Q4
+- id: ch04-c-decode-attn
+  front: Why is decode attention never compute-bound?
+  back: "Each sequence reads its own KV cache, so intensity is about G (query heads per KV head), around 8, at any batch. Ironwood's ridge is 313."
+  source: SB4, SB7
+- id: ch04-c-kv
+  front: KV-cache bytes per token?
+  back: "$2 \\cdot L \\cdot K \\cdot H \\cdot$ bytes. LLaMA-3-70B bf16: 327,680 B, about 320 KB."
+  source: SB4
+- id: ch04-c-kv-seq
+  front: LLaMA-3-70B KV cache for one sequence at 8k, 32k and 128k tokens (bf16)?
+  back: "2.7 GB, 10.7 GB, 43 GB."
+  source: derived
+- id: ch04-c-fit
+  front: LLaMA-3-70B bf16 on 8 Ironwood chips at 32k context, how many sequences fit?
+  back: "About 140: 189 GB free per chip after weights, 10.7 GB per sequence. Below the 313 tokens per chip a matmul needs."
+  source: derived
+- id: ch04-c-moe-params
+  front: MoE parameters against FLOPs?
+  back: "Parameters scale with E (all experts stored); FLOPs per token scale with k (experts used). Ch. 7 model at E = 16, k = 2: 212B total, 31B active."
+  source: SB7 Q5
+- id: ch04-c-moe-batch
+  front: MoE compute-bound batch?
+  back: "$B > (E/k) \\cdot \\beta \\cdot C/W_\\text{hbm}$. DeepSeek-V3 shape, int8 weights on v5e: 3,840. Ironwood fp8 weights, bf16 math: about 5,000."
+  source: SB4 Q8, derived
+- id: ch04-c-moe-comms
+  front: Collectives added by an MoE layer?
+  back: "Two AllToAlls: route tokens to experts and back. On a TPU ring each costs about a quarter of an AllGather (Chapter 5)."
+  source: SB4
+- id: ch04-c-adam
+  front: Training memory per parameter with mixed-precision Adam?
+  back: "10 bytes: 2 for bf16 parameters, 4 + 4 for fp32 moments. 700 GB for 70B."
+  source: SB5
+- id: ch04-c-flops-not-mem
+  front: Why are training clusters large?
+  back: "For FLOPs. LLaMA-3-70B's 11.2 TB of state fits on about 54 Ironwood chips, but would take years there; across a pod it is about 1.3 GB per chip."
+  source: SB6
+- id: ch04-c-deepseek
+  front: DeepSeek-V3's implied training MFU?
+  back: "About 21.6%: 3.3e24 FLOPs needed against 1.52e25 available over 2.79M H800-hours at FP8."
+  source: SB4 Q7
+- id: ch04-c-pad
+  front: Which LLaMA-3 dimensions are multiples of 256?
+  back: "All of D (8,192), F (28,672 = 112 × 256) and V (128,256 = 501 × 256)."
+  source: derived
+- id: ch04-c-kv-shard
+  front: How far can the KV cache be split by heads?
+  back: "At most K ways (8 for LLaMA-3-70B). Beyond that, split by batch or sequence, with extra collectives."
+  source: SB7

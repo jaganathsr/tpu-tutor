@@ -1,0 +1,134 @@
+# Chapter 4 quiz. Numbers recomputed in scripts/ch04_transformer.py.
+- id: ch04-einsum
+  type: numeric
+  prompt: "How many FLOPs does the contraction $A[I,J,K,L] \\cdot B[I,J,M,N,O] \\to C[K,L,M,N,O]$ take, for $I = J = K = L = M = N = O = 4$?"
+  answer: 32768
+  tolerance: 0.001
+  unit: FLOPs
+  explanation: "I and J are contracted (in both inputs, not the output); there are no batch dimensions. FLOPs are $2 \\cdot IJKLMNO = 2 \\cdot 4^7 = 32{,}768$."
+  adapted_from: SB4 Q3
+  source: "SB4 #a-few-problems-to-work"
+
+- id: ch04-6nd
+  type: mcq
+  prompt: "Where does the 6 in 6 × parameters × tokens come from?"
+  options:
+    - text: "2 FLOPs per multiply-accumulate in the forward pass, and two matmuls of the same size in the backward pass (gradients for activations and for weights)."
+      correct: true
+      why: "Forward $2NPM$; backward $\\partial L/\\partial A$ and $\\partial L/\\partial B$ each $2NPM$. Total 6 per parameter per token."
+    - text: "Forward, backward and optimizer step each cost 2."
+      why: "The optimizer update is O(parameters) per step, not per token. It is negligible next to the matmuls."
+    - text: "Adam keeps 3 copies of each parameter."
+      why: "That is a memory fact (10 bytes per parameter), not a FLOP count."
+    - text: "Attention costs 3× the MLP."
+      why: "Attention is a small fraction of FLOPs unless context exceeds about 8 × d_model."
+  source: "SB4 #forward-and-reverse-flops"
+
+- id: ch04-llama-params
+  type: numeric
+  prompt: "LLaMA-3-70B has $L = 80$, $D = 8192$, $F = 28672$ (gated MLP). How many parameters are in its MLP blocks, in billions?"
+  answer: 56.4
+  tolerance: 0.02
+  unit: B
+  explanation: "$3 \\cdot 8192 \\cdot 28672 \\cdot 80 = 56.4$B, 80% of the model. Attention projections are 12.1B and the vocabulary 2.1B."
+  source: "SB6 #counting-parameters-and-flops"
+
+- id: ch04-kv-token
+  type: numeric
+  prompt: "LLaMA-3-70B has 80 layers, 8 KV heads and head dimension 128. How many bytes of KV cache per token in bf16?"
+  answer: 327680
+  tolerance: 0.01
+  unit: bytes
+  explanation: "$2 \\cdot 80 \\cdot 8 \\cdot 128 \\cdot 2 = 327{,}680$ bytes, about 320 KB. A 32k-token sequence holds 10.7 GB."
+  source: "SB4 #key-value-kv-caching"
+
+- id: ch04-attn-share
+  type: numeric
+  prompt: "For a model with $F = 4D$ and $NH = D$, attention FLOPs equal the weight-matmul FLOPs when $T = 8D$. For $D = 8192$, at what sequence length does that happen?"
+  answer: 65536
+  tolerance: 0.01
+  unit: tokens
+  explanation: "$T / 8D = 1$ at $T = 65{,}536$. Below that, attention is a minority of training FLOPs."
+  source: "SB4 #fractional-cost-of-attention-with-context-length"
+
+- id: ch04-t-equals-2d
+  type: numeric
+  prompt: "Self-attention's dot-product FLOPs ($12BT^2NH$) equal the Q, K, V, O projection FLOPs ($24BTDNH$) at what T, for $D = 4096$?"
+  answer: 8192
+  tolerance: 0.01
+  unit: tokens
+  explanation: "$24BTDNH = 12BT^2NH$ gives $T = 2D = 8{,}192$."
+  adapted_from: SB4 Q5
+  source: "SB4 #a-few-problems-to-work"
+
+- id: ch04-decode-attn
+  type: scenario
+  prompt: "A team doubles the decode batch from 64 to 128 on Ironwood, hoping attention will become compute-bound like the MLP. The model uses GQA with 8 query heads per KV head. What happens to attention's arithmetic intensity?"
+  options:
+    - text: "It stays at about 8 FLOP/B: each sequence reads its own KV cache, so batch cancels."
+      correct: true
+      why: "$\\text{AI} = TSG/(TG + S) \\approx G$ at $T = 1$. B does not appear. Attention stays memory-bound; only the MLP benefits."
+    - text: "It doubles to about 16 FLOP/B."
+      why: "Batch would raise intensity only if sequences shared K and V, which they do not."
+    - text: "It reaches the ridge of 313 at batch 128."
+      why: "Attention intensity is independent of batch."
+    - text: "It halves, because the cache doubles."
+      why: "Bytes and FLOPs both double; the ratio is unchanged."
+  source: "SB4 #a-few-problems-to-work"
+
+- id: ch04-moe-batch
+  type: numeric
+  prompt: "An MoE with $E = 256$ experts and $k = 8$ active runs on v5e with int8 weights and bf16 math (dense compute-bound batch 120). How many tokens per batch are needed for the expert matmuls to be compute-bound?"
+  answer: 3840
+  tolerance: 0.02
+  unit: tokens
+  explanation: "Each expert sees about $Bk/E$ tokens, so the batch must be $E/k = 32$ times the dense threshold: $32 \\cdot 120 = 3{,}840$. On Ironwood with fp8 weights and bf16 math it is about 5,000."
+  adapted_from: SB4 Q8
+  source: "SB4 #a-few-problems-to-work"
+
+- id: ch04-moe-params
+  type: mcq
+  prompt: "The Scaling Book's 18B dense model becomes an MoE with 16 experts and 2 active per token. Which pair is closest to its total and active parameters?"
+  options:
+    - text: "212B total, 31B active"
+      correct: true
+      why: "MLP parameters grow 16× (to about 206B), attention and vocabulary stay at about 5.5B. Active MLP is 2 experts' worth."
+    - text: "288B total, 36B active"
+      why: "That multiplies the whole model by 16, including attention and vocabulary, which are not replicated per expert."
+    - text: "18B total, 18B active"
+      why: "That is the dense model."
+    - text: "212B total, 212B active"
+      why: "Each token runs through only k = 2 experts."
+  adapted_from: SB7 Q5
+  source: "SB7 #worked-problems"
+
+- id: ch04-train-memory
+  type: scenario
+  prompt: "LLaMA-3-70B training with a 4M-token batch needs about 11.2 TB including activations. It fits on about 54 Ironwood chips. Why do teams use thousands?"
+  options:
+    - text: "FLOPs: at 54 chips the 6.3e24-FLOP run would take years. Memory is not the binding constraint."
+      correct: true
+      why: "Spread over a full pod, the memory is about 1.3 GB per chip. The cluster size is set by how long you are willing to wait."
+    - text: "Optimizer state must be replicated on every chip."
+      why: "FSDP shards optimizer state; it is not replicated."
+    - text: "Activations cannot be checkpointed on TPU."
+      why: "jax.checkpoint and remat policies work on TPU."
+    - text: "ICI bandwidth requires at least 1,000 chips."
+      why: "ICI bandwidth per chip does not depend on slice size beyond wraparound."
+  source: "SB6 #counting-parameters-and-flops"
+
+- id: ch04-deepseek-mfu
+  type: numeric
+  prompt: "DeepSeek-V3 used 2.79M H800-hours to train 37B active parameters on 14.8T tokens, at 1.513 PFLOP/s dense FP8 per GPU. What utilization does that imply, in percent?"
+  answer: 21.7
+  tolerance: 0.03
+  unit: "%"
+  explanation: "Needed $6 \\cdot 37\\times10^9 \\cdot 14.8\\times10^{12} = 3.29\\times10^{24}$; available $1.513\\times10^{15} \\cdot 2.79\\times10^6 \\cdot 3600 = 1.52\\times10^{25}$. Ratio 21.6%; the book rounds to 21.7%."
+  adapted_from: SB4 Q7
+  source: "SB4 #a-few-problems-to-work"
+
+- id: ch04-explain
+  type: free
+  prompt: "Explain to a GPU engineer why long-context decode on TPU is limited by HBM capacity and bandwidth rather than FLOPs, using LLaMA-3-70B on 8 Ironwood chips as the example."
+  model_answer: "Decode does about 2 FLOPs per parameter per token, so the MLP needs about 313 tokens per chip to be compute-bound on Ironwood. Attention never gets there: its intensity is about G = 8 FLOP/B at any batch, because each sequence reads its own KV cache. Capacity limits the batch too. The model's KV cache is 320 KB per token in bf16, so a 32k-token conversation holds 10.7 GB. After 141 GB of weights, 8 chips have about 1.5 TB left: room for about 140 such conversations, well under the 2,500 tokens (313 × 8) the matmuls would need. So the step time is set by reading weights plus every sequence's cache from HBM, and the levers are fewer bytes (fp8 weights and KV, GQA) and more bandwidth and capacity. Those are what Ironwood's 192 GiB and 8i's 288 GB and 384 MB of SRAM target."
+  source: "SB7 #what-about-attention"

@@ -37,9 +37,18 @@
 
 </Slide>
 
-<Slide title="Try it: hops and wraparound">
+<Slide title="Hops and wraparound">
 
-<TorusExplorer mode="2d" />
+| Slice | Wraparound | Diameter (hops) |
+|---|---|---|
+| v5e 16×16 | both axes | 16 |
+| v5e 4×4 | none | 6 |
+| Ironwood 4×4×4 | all axes | 6 |
+| Ironwood 2×2×2 | none | 3 |
+| Ironwood 8×16×16 | all axes | 20 |
+
+- Ring of N: farthest N/2 hops with wraparound, N − 1 without.
+- No wraparound: ring collectives cannot close, about 2× the communication time.
 
 </Slide>
 

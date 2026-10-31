@@ -1,0 +1,111 @@
+<Slide title="Three numbers every later chapter divides">
+
+- **Parameters:** what HBM must hold and what decode reads every step.
+- **FLOPs:** 6 × parameters × tokens to train; 2 × active parameters per token to infer.
+- **KV-cache bytes:** $2 L K H$ × bytes per token, per sequence, read every decode step.
+
+</Slide>
+
+<Slide title="Counting">
+
+| Component | Parameters per layer | Training FLOPs per layer |
+|---|---|---|
+| Gated MLP | $3DF$ | $18BTDF$ |
+| Attention projections | $2DH(N+K)$ | $12BTDH(N+K)$ |
+| Dot-product attention | none | $12BTSNH$ |
+| Vocabulary | $2DV$ total | $6BTDV$ |
+
+LLaMA-3-70B: MLP 56.4B, attention 12.1B, vocab 2.1B. 6.3e24 FLOPs on 15T tokens: 45 days on a v5p pod, 9 on an Ironwood pod at 40% MFU.
+
+</Slide>
+
+<Slide title="Worked: LLaMA-3-70B">
+
+| Quantity | Value |
+|---|---|
+| Parameters | 70.5B (MLP 80%) |
+| Training FLOPs, 15T tokens | 6.3e24 |
+| Forward FLOPs per token | about 141 GFLOP |
+| KV per token, bf16 | 320 KB |
+| Weights, bf16 | 141 GB: fits on one Ironwood chip (206 GB), 65 GB left for cache |
+
+</Slide>
+
+<Slide title="Attention: small share, wrong intensity">
+
+<Cols>
+<div>
+
+$$
+\frac{\text{attn FLOPs}}{\text{matmul FLOPs}} = \frac{T}{8D}
+$$
+
+<Gloss>Attention dominates only beyond 65,536 tokens for D = 8,192.</Gloss>
+
+</div>
+<div>
+
+$$
+\text{AI}_\text{attn} = \frac{TSG}{TG + S}
+$$
+
+<Gloss>Prefill: grows with T. Decode: about G ≈ 8, at any batch.</Gloss>
+
+</div>
+</Cols>
+
+Decode attention is memory-bound at every batch size: each sequence reads its own cache.
+
+</Slide>
+
+<Slide title="The KV cache sets decode batch">
+
+<Cols>
+<div>
+<Big n="320 KB">per token, LLaMA-3-70B in bf16</Big>
+<Big n="10.7 GB">per 32k-token conversation</Big>
+</div>
+<div>
+
+- 8 Ironwood chips: 141 GB of weights, about 1.5 TB free.
+- About 140 conversations at 32k fit.
+- The matmuls want 313 tokens per chip, 2,500 across 8 chips.
+- Capacity, not FLOPs, limits the batch.
+
+</div>
+</Cols>
+
+</Slide>
+
+<Slide title="MoE: memory follows E, compute follows k">
+
+$$
+B > \frac{E}{k} \cdot \beta \cdot \frac{C}{W_\text{hbm}}
+$$
+
+<Gloss>Each expert sees only its share of tokens, so the batch must be E/k times larger.</Gloss>
+
+| | E/k | Compute-bound batch |
+|---|---|---|
+| DeepSeek-V3 shape, v5e, int8 weights | 32 | 3,840 |
+| Same, Ironwood, fp8 weights, bf16 math | 32 | about 5,000 |
+| Same, Ironwood, fp8 math too | 32 | about 20,000 |
+
+</Slide>
+
+<Slide title="Training memory is not the constraint">
+
+- Adam: 10 bytes per parameter. 700 GB for 70B.
+- LLaMA-3-70B at a 4M-token batch: 11.2 TB with activations. Fits on 54 Ironwood chips.
+- On 54 chips it would take years. Over a pod it is 1.3 GB per chip.
+
+</Slide>
+
+<Slide title="Shape on TPU">
+
+- Pad D, F, H and V to multiples of 256 (v6e, Ironwood). LLaMA-3 already is.
+- Head dim 128 fills half a 256-deep MXU per head; 64 fills a quarter.
+- K = 8 KV heads: split the cache by heads at most 8 ways, then by batch.
+- Ragged MoE batches fight static shapes: capacity padding, ragged_dot, megablox, SparseCore.
+
+</Slide>

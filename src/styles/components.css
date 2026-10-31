@@ -380,6 +380,7 @@ figure.interactive figcaption b { color: var(--ink); font-weight: 600; }
 
 .ix { border-top: 3px solid var(--dayc, var(--accent-strong)); border-bottom: 1px solid var(--rule); padding: 1rem 0 0.8rem; font-family: var(--font-ui); font-size: var(--fs-small); }
 .ix-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 0.8rem 1.2rem; margin-bottom: 1rem; }
+.ix-controls select, .ix-controls input[type='number'] { width: 100%; }
 .ix-controls .field output { font-family: var(--font-mono); font-size: var(--fs-xsmall); color: var(--ink); }
 .ix-controls .field .lbl { display: flex; justify-content: space-between; gap: 0.5rem; color: var(--ink-2); font-size: var(--fs-xsmall); }
 .ix svg { display: block; width: 100%; height: auto; background: var(--paper-2); border-radius: var(--radius); }

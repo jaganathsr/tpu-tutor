@@ -1,0 +1,189 @@
+---
+objectives:
+  - I can count the FLOPs of any einsum, and derive 6 × parameters × tokens for training from 2× forward and 4× backward.
+  - I can count the parameters of a dense GQA transformer and of an MoE, split into MLP, attention and vocabulary.
+  - I can compute KV-cache bytes per token and per sequence, and say how many sequences fit on a chip after the weights.
+  - I can derive when attention FLOPs dominate (T > 8D) and why decode attention is never compute-bound.
+  - I can compute the compute-bound batch for an MoE layer and explain why it is E/k times larger than for a dense layer.
+  - I can estimate training memory (10 bytes per parameter plus activations) and show that large clusters are needed for FLOPs, not memory.
+  - I can name the TPU-specific consequences of model shape — padding to 256, head dimension, KV heads — and where they show up later.
+teachback:
+  - Estimate on a whiteboard, in two minutes, the FLOPs and the Ironwood-pod-days to train a 70B dense model on 15T tokens.
+  - Why does an MoE make decode harder to make compute-bound, and by what factor?
+  - A 70B model has 320 KB of bf16 KV cache per token. How many 32k-token conversations fit beside the weights on 8 Ironwood chips?
+  - Why is decode attention memory-bound at every batch size, while the MLP becomes compute-bound at large enough batch?
+sources:
+  - { id: SB4, anchor: "#counting-dots", label: "Counting dots" }
+  - { id: SB4, anchor: "#global-flops-and-params-calculation", label: "Global FLOPs and params" }
+  - { id: SB4, anchor: "#fractional-cost-of-attention-with-context-length", label: "Attention share" }
+  - { id: SB4, anchor: "#sparsity-and-mixture-of-experts", label: "MoE" }
+  - { id: SB4, anchor: "#gradient-checkpointing", label: "Remat" }
+  - { id: SB4, anchor: "#key-value-kv-caching", label: "KV caching" }
+  - { id: SB4, anchor: "#a-few-problems-to-work", label: "Problems" }
+  - { id: SB4, anchor: "#appendix-a-how-does-flash-attention-work", label: "Flash attention" }
+  - { id: SB5, anchor: "#some-problems-to-work", label: "LLaMA-2-13B problems" }
+  - { id: SB6, anchor: "#counting-parameters-and-flops", label: "LLaMA-3-70B counts" }
+  - { id: SB7, anchor: "#what-about-attention", label: "Attention intensity" }
+  - { id: SB7, anchor: "#worked-problems", label: "Worked problems" }
+  - { id: SB10, anchor: "#worked-problems", label: "MoE with ragged_dot" }
+  - { id: R-tpuinf, label: "megablox, fused MoE kernels" }
+  - { id: D-7x }
+  - { id: G-8dd }
+---
+
+Every later chapter divides one of three numbers by a bandwidth or a FLOP rate: parameters, FLOPs and KV-cache bytes. This chapter counts them for a decoder-only transformer, then applies the Chapter 1 roofline to attention and to mixture-of-experts layers. Most of it is hardware-neutral, so it moves quickly through what a GPU engineer already knows and spends its time on the parts where TPU shapes and numbers differ.
+
+Notation follows the Scaling Book <Cite id="SB4" at="#transformer-accounting" />: $B$ batch, $T$ query length, $S$ key/value length, $L$ layers, $D$ model width, $F$ MLP width, $N$ query heads, $K$ KV heads, $H$ head dimension, $V$ vocabulary, $E$ experts, $k$ experts per token, $G = N/K$ query heads per KV head.
+
+## Counting FLOPs
+
+A contraction costs 2 FLOPs, one multiply and one add, per element of the product of all distinct dimensions, counting batch and contracting dimensions once <Cite id="SB4" at="#counting-dots" />. $A[N, P] \cdot B[P, M]$ costs $2NPM$.
+
+The backward pass of $C = AB$ needs two products of the same size: $\partial L / \partial A = (\partial L / \partial C) B^\top$ and $\partial L / \partial B = A^\top (\partial L / \partial C)$. Training is therefore $2 + 4 = 6$ FLOPs per multiply-accumulate in the forward pass. Since every parameter takes part in one multiply-accumulate per token, training costs
+
+$$
+\text{FLOPs}_\text{train} \approx 6 \cdot \text{parameters} \cdot \text{tokens}
+\tag{4.1}
+$$
+
+<Gloss>Two FLOPs per parameter per token forward, four backward. Attention's sequence-dependent term is extra and matters only at long context.</Gloss>
+
+Rematerialization, recomputing activations in the backward pass instead of storing them, adds a second forward pass for the recomputed part. Saving only each layer's input brings the cost to about $8 \cdot \text{parameters} \cdot \text{tokens}$ <Cite id="SB4" at="#gradient-checkpointing" />.
+
+## Counting parameters
+
+For a gated MLP and grouped-query attention, per layer <Cite id="SB4" at="#global-flops-and-params-calculation" />:
+
+| Component | Parameters per layer | Training FLOPs per layer |
+|---|---|---|
+| MLP (3 matrices) | $3DF$ | $18BTDF$ |
+| Attention projections | $2DH(N + K)$ | $12BTDH(N + K)$ |
+| Dot-product attention | none | $12BTSNH$ |
+| Norms | $2D$ | $O(BTD)$ |
+| Vocabulary (embed + unembed) | $2DV$ in total | $6BTDV$ for the unembedding |
+
+<ModelCalc />
+
+<Worked title="LLaMA-3-70B">
+
+$L = 80$, $D = 8{,}192$, $F = 28{,}672$, $N = 64$, $K = 8$, $H = 128$, $V = 128{,}256$ <Cite id="SB6" at="#what-does-llama-3-look-like" />.
+
+- MLP: $3 \cdot 8192 \cdot 28672 \cdot 80 = 56.4$B, 80% of the model.
+- Attention: $80 \cdot 2 \cdot 8192 \cdot 128 \cdot (64 + 8) = 12.1$B.
+- Vocabulary: $2 \cdot 128256 \cdot 8192 = 2.1$B.
+- Total 70.5B; the book gives 70.4B <Cite id="SB6" at="#counting-parameters-and-flops" />.
+
+Training on 15T tokens takes $6 \cdot 70.5 \times 10^9 \cdot 15 \times 10^{12} = 6.3 \times 10^{24}$ FLOPs. At 40% MFU, that is 45 days on one v5p pod of 8,960 chips, the book's figure of about 44, or 9 days on one Ironwood pod of 9,216 chips <Derived />. Computed by `scripts/ch04_transformer.py`.
+
+</Worked>
+
+## How much of the compute is attention
+
+For self-attention, $S = T$, with a non-gated MLP of $F = 4D$ and $NH = D$, the ratio of attention FLOPs to everything else is <Cite id="SB4" at="#fractional-cost-of-attention-with-context-length" />
+
+$$
+\frac{\text{attention FLOPs}}{\text{matmul FLOPs}} = \frac{12BT^2NH}{18BTDF + 24BTDNH} = \frac{T}{8D}
+\tag{4.2}
+$$
+
+<Gloss>Attention overtakes the weight matmuls only when the sequence is about eight times longer than the model width.</Gloss>
+
+For $D = 8{,}192$ that is $T > 65{,}536$. For training at typical context lengths, attention is a minority of the FLOPs. It still matters, for two reasons that this formula hides:
+
+- Its intensity is different from a matmul's.
+- At decode time it does not shrink with batch.
+
+## Attention intensity: prefill against decode
+
+Count the bytes attention reads. Ignoring the projections, one layer of GQA attention reads $Q$ and writes its output ($4BTNH$ bytes in bf16), reads $K$ and $V$ ($4BSKH$), and does $4BTSNH$ FLOPs <Cite id="SB4" at="#a-few-problems-to-work" s="Q4" />:
+
+$$
+\text{AI}_\text{attn} = \frac{4BTSNH}{4BTNH + 4BSKH} = \frac{TSG}{TG + S}
+\tag{4.3}
+$$
+
+<Gloss>B cancels: batching more sequences does not raise attention's intensity, because each sequence brings its own keys and values.</Gloss>
+
+- **Prefill**, $S = T$: intensity is $TG/(G + 1)$, which grows with the prompt. A long prompt's attention is compute-bound.
+- **Decode**, $T = 1$: intensity is $SG/(G + S) \approx G$. With 8 query heads per KV head that is about 8 FLOP/B, against a ridge of 313 on Ironwood. Decode attention is memory-bound at every batch size and every context length. The only levers are fewer KV bytes (GQA, quantized KV) and more bandwidth.
+
+This is the structure from the "per-example weights" problem in Chapter 1: every sequence's KV cache is used by exactly one query. The MLP, by contrast, shares one weight matrix across the whole batch and does become compute-bound at large batch. Chapter 7 builds the decode step time from these two parts.
+
+<GpuAnalogy>
+<p>This is FlashAttention's arithmetic, and it holds on any hardware: decode attention is a memory-bandwidth kernel. FlashAttention's on-chip SRAM tiles map to VMEM on a TPU <Cite id="SB4" at="#appendix-a-how-does-flash-attention-work" />. The TPU difference is the size of that SRAM: 128 MiB on Ironwood and 384 MB on 8i, against about 228 KB per H100 SM. Large enough, on 8i, to hold a meaningful fraction of a KV cache.</p>
+</GpuAnalogy>
+
+## The KV cache
+
+Each layer stores one key and one value vector per KV head per token:
+
+$$
+\text{KV bytes per token} = 2 \cdot L \cdot K \cdot H \cdot \text{bytes per value}
+\tag{4.4}
+$$
+
+<Gloss>Two (K and V) times layers times KV heads times head dimension.</Gloss>
+
+For LLaMA-3-70B in bf16: $2 \cdot 80 \cdot 8 \cdot 128 \cdot 2 = 327{,}680$ bytes, about 320 KB per token. One 32k-token conversation holds 10.7 GB of cache, and one 128k-token conversation holds 43 GB. Without GQA, with $K = N = 64$, those figures would be 8× larger <Cite id="SB4" at="#key-value-kv-caching" />.
+
+<Worked title="How many long conversations fit">
+
+LLaMA-3-70B in bf16 on 8 Ironwood chips. The weights take 141 GB, 17.6 GB per chip, leaving about 189 GB per chip of the 206 GB. At 10.7 GB per 32k-token sequence, each chip holds the cache for about 17 such sequences, or about 140 across the 8 chips <Derived />. That is a batch of 140 at 32k context, below the 313 tokens per chip an Ironwood matmul needs to be compute-bound, before any working memory is reserved.
+
+KV capacity, not compute, limits decode batch at long context. Ironwood's 192 GiB of HBM and 8i's 288 GB exist for this reason <Cite id="D-7x" /> <Cite id="G-8dd" />.
+
+</Worked>
+
+## Mixture of experts
+
+An MoE layer replaces one MLP with $E$ expert MLPs, of which $k$ run per token. Parameters scale with $E$; FLOPs per token scale with $k$ <Cite id="SB4" at="#sparsity-and-mixture-of-experts" />. The Scaling Book's chapter 7 model, made into an MoE with $E = 16$ and $k = 2$, grows from 18.4B to 212B parameters while its active parameters per token grow only to 31B <Cite id="SB7" at="#worked-problems" s="Q5" />.
+
+The roofline penalty follows directly. A batch of $B$ tokens spreads over $E$ experts, so each expert's weight matrix sees about $Bk/E$ tokens. For each expert matmul to be compute-bound, $Bk/E$ must exceed the dense threshold:
+
+$$
+B > \frac{E}{k} \cdot \beta \cdot \frac{C}{W_\text{hbm}}
+\tag{4.5}
+$$
+
+<Gloss>An MoE needs E/k times the batch of a dense model to keep its matrix units busy, because each expert sees only its share of the tokens.</Gloss>
+
+With DeepSeek-V3's sparsity ($E = 256$, $k = 8$, so $E/k = 32$) and int8 weights on v5e, $B > 3{,}840$ tokens <Cite id="SB4" at="#a-few-problems-to-work" s="Q8" />. On Ironwood with fp8 weights and bf16 math, $B > 5{,}000$. With fp8 math as well, the ridge doubles and $B > 20{,}000$ <Derived />. MoE decode is memory-bound at any realistic batch. MoE also adds two AllToAll collectives per layer, to route tokens to experts and back, which Chapter 5 costs.
+
+<AnalogyBreaks>
+<p>On a GPU, MoE routing produces ragged per-expert batches that a grouped-GEMM kernel handles directly, at any shape. On a TPU, ragged shapes fight the static-shape compiler. Expert batches are padded to a fixed capacity, or handled by dedicated kernels: the megablox grouped matmul and `jax.lax.ragged_dot`, plus SparseCore gather and scatter for the routing itself <Cite id="SB10" at="#worked-problems" /> <Cite id="R-tpuinf" />. Chapter 8 shows how tpu-inference does it.</p>
+</AnalogyBreaks>
+
+## Training memory
+
+Mixed-precision Adam keeps bf16 parameters plus fp32 first and second moments: 10 bytes per parameter, 700 GB for a 70B model <Cite id="SB5" at="#data-parallelism" />. Activations add more. The Scaling Book's LLaMA-3-70B example, a 4M-token batch with two checkpoints per layer, needs about 10.5 TB of activations, 11.2 TB in total <Cite id="SB6" at="#counting-parameters-and-flops" />. That fits on about 110 v5p chips or 54 Ironwood chips <Derived />. Training on that few chips would take about 10 years.
+
+Large training clusters exist for FLOPs, not memory. Spread over a full pod, the memory is about 1.3 GB per chip. Chapters 5 and 6 are about the communication cost of spreading the FLOPs, not about fitting the model.
+
+## TPU-specific consequences of shape
+
+- **Pad to the array.** D, F, the head dimension and the vocabulary should be multiples of 256 on v6e and Ironwood. LLaMA-3's are: $D = 8{,}192$, $F = 28{,}672 = 112 \cdot 256$ and $V = 128{,}256 = 501 \cdot 256$.
+- **Head dimension sets attention's MXU efficiency.** $H = 128$ fills half of a 256-deep array per head; $H = 64$ fills a quarter (Chapter 2). Attention kernels compensate by packing heads.
+- **KV heads limit KV sharding.** With $K = 8$, the KV cache can be split by heads at most 8 ways. Beyond that it must be split by batch or by sequence, at the cost of extra collectives (Chapter 7).
+- **Static shapes.** Sequence length and batch are compile-time constants. Serving engines pad them into buckets (Chapter 8).
+
+## Worked problems from the book
+
+<Worked title="Counting a 4096-wide model">
+
+The Scaling Book's Chapter 4, problem 1 <Cite id="SB4" at="#a-few-problems-to-work" />: $D = 4{,}096$, $F = 4D$, $V = 32{,}000$, $L = 64$, multi-head attention with $NH = D$, int8 KV cache.
+
+- Parameters: $L(3DF + 4D^2 + 2D) + 2DV = 17.4$B. The book states "about 16B"; the exact sum of its own formula is 17.4B.
+- Attention fraction of parameters: $4D^2 / (4D^2 + 12D^2) = 1/4$.
+- KV per token: $2 \cdot 64 \cdot 4096$ bytes $= 512$ KiB in int8.
+
+</Worked>
+
+<Worked title="DeepSeek-V3's training efficiency">
+
+The Scaling Book's Chapter 4, problem 7 <Cite id="SB4" at="#a-few-problems-to-work" />. DeepSeek-V3 reported 2.79M H800-hours, 14.8T tokens and 37B active parameters, trained in FP8 at 1.513 PFLOP/s dense per GPU.
+
+- Needed: $6 \cdot 37 \times 10^9 \cdot 14.8 \times 10^{12} = 3.3 \times 10^{24}$ FLOPs.
+- Available: $1.513 \times 10^{15} \cdot 2.79 \times 10^6 \cdot 3600 = 1.52 \times 10^{25}$.
+- Utilization: about 21.6%; the book rounds to 21.7%.
+
+</Worked>
